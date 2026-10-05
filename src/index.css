@@ -1,0 +1,160 @@
+@import "tailwindcss";
+@import "./styles/tokens.css";
+
+@theme {
+  --color-bg: #060608;
+  --color-surface-1: rgba(255,255,255,0.03);
+  --color-surface-2: rgba(255,255,255,0.06);
+  --color-border-1: rgba(255,255,255,0.07);
+  --color-accent: #5856d6;
+  --color-accent-weak: #a78bfa;
+  --color-error: #ff3b30;
+  --color-success: #34c759;
+  --color-warning: #ff9f0a;
+}
+
+html, body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+@layer base {
+  *, ::before, ::after { box-sizing: border-box; }
+  * { margin: 0; padding: 0; }
+  html, body, #root { height: 100%; }
+}
+html, body, #root { background: var(--bg); }
+body { overflow-x: hidden; }
+img, svg, video, canvas { max-width: 100%; }
+
+/* === Reusable pill capsule — ponytail: add variants via modifier class, not new CSS files === */
+.pill-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-height: 40px;
+  min-width: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-1);
+  background: var(--bg-surface-1);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.pill-control--active {
+  border-color: rgba(88,86,214,0.45);
+  background: rgba(88,86,214,0.18);
+  color: var(--accent-weak);
+}
+.pill-control:where(:focus-visible) { outline: 2px solid var(--accent-weak); outline-offset: 2px; }
+.filter-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.filter-row::-webkit-scrollbar { display: none; }
+
+/* Glass / hero — ambil komposisi V1 tanpa copy logic */
+.glass-card {
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.hero-card {
+  background: linear-gradient(135deg, rgba(88,86,214,.14), rgba(167,139,250,.06));
+  border: 1px solid rgba(88,86,214,.22);
+  border-radius: 24px;
+  padding: 22px;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 12px 32px -8px rgba(88,86,214,.20), inset 0 1px 1px rgba(255,255,255,.08);
+}
+.hero-card::before {
+  content: '';
+  position: absolute;
+  top: -60px; right: -40px;
+  width: 180px; height: 180px;
+  background: radial-gradient(circle, rgba(88,86,214,.22) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.app-shell {
+  padding-inline: 0;
+}
+
+.app-container { min-width: 0; padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
+.app-main { min-width: 0; padding-inline: 0; }
+.app-header { padding-inline: 0; }
+.transaction-form { width: 100%; }
+.split-page { width: 100%; }
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+@media (min-width: 900px) {
+  .app-container { max-width: 900px; }
+  /* ponytail: vertical stack — category then Tools then recent; single-column grid keeps deterministic DOM order; use grid-template-areas if side-by-side needed later */
+  .dashboard-layout { display: grid; grid-template-columns: 1fr; row-gap: 20px; align-items: start; }
+  .dashboard-layout > [aria-label="Periode dashboard"],
+  .dashboard-layout > [aria-labelledby="balance-title"],
+  .dashboard-layout > [aria-label="Onboarding"],
+  .dashboard-layout > [aria-labelledby="debt-alert-title"],
+  .dashboard-layout > [aria-labelledby="category-title"],
+  .dashboard-layout > [aria-labelledby="shortcut-title"],
+  .dashboard-layout > [aria-labelledby="recent-title"] { grid-column: 1 / -1; }
+}
+
+@media (min-width: 640px) and (max-width: 899px) {
+  .app-container { max-width: 720px; padding-inline: max(24px, env(safe-area-inset-left)) max(24px, env(safe-area-inset-right)); }
+  .app-main { padding-top: 24px; }
+}
+
+@media (min-width: 768px) {
+  .transaction-form { max-width: 760px; margin-inline: auto; }
+}
+
+@media (min-width: 1024px) {
+  .app-container { max-width: var(--content-max-desktop); }
+  .app-main { padding-inline: 0; }
+}
+
+@media (min-width: 768px) {
+  .nav-shell { max-width: 520px; bottom: calc(22px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 420px) {
+  .app-header > div:last-child > span { max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-header [aria-haspopup="dialog"] { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+/* transaction-icon: dedicated flex wrapper, double-class selector beats Material Symbols stylesheet (unlayered) which sets display:block */
+.transaction-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.transaction-icon.material-symbols-outlined {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:focus-visible { outline: 2px solid var(--accent-weak); outline-offset: 2px; }
+
+.skip-link { position: fixed; left: 16px; top: 8px; z-index: 50; transform: translateY(-150%); border-radius: 8px; background: var(--accent-weak); color: var(--bg); padding: 8px 12px; font-weight: 700; }
+.skip-link:focus { transform: translateY(0); }
+
+@media (hover: none) {
+  ::-webkit-scrollbar { display: none; }
+}

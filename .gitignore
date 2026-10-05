@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.env*
+!.env.example
+
+# Development tools
+.playwright-mcp/
+.oxlintrc.json
+opencode-ui-review.md
+scripts/
+tests/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

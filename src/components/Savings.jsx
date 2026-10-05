@@ -1,0 +1,65 @@
+import { useMemo, useState } from 'react';
+import useStore from '../store/useStore';
+import { set, weddingRef } from '../lib/db';
+import { enqueueWeddingSettings } from '../lib/offlineQueue';
+import { formatRp } from '../lib/dashboard';
+
+const DEFAULT_CATEGORIES = [
+  { id: 1, nama: 'Venue & Gedung', icon: '🏛️', target: 15000000, warna: '#f472b6' },
+  { id: 2, nama: 'Catering', icon: '🍽️', target: 12000000, warna: '#fb923c' },
+  { id: 3, nama: 'Baju & MUA', icon: '👗', target: 8000000, warna: '#a78bfa' },
+  { id: 4, nama: 'Dokumentasi', icon: '📸', target: 5000000, warna: '#60a5fa' },
+  { id: 5, nama: 'Dekorasi', icon: '💐', target: 5000000, warna: '#34d399' },
+  { id: 6, nama: 'Undangan & Lainnya', icon: '💌', target: 5000000, warna: '#fbbf24' },
+];
+const inputClass = 'min-h-11 w-full rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] px-3 text-base text-[var(--text-primary)]';
+const tabKeyDown = (event, values, setValue) => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const index = values.indexOf(event.currentTarget.value); const next = event.key === 'Home' ? 0 : event.key === 'End' ? values.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : values.length - 1)) % values.length; setValue(values[next]); event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next]?.focus(); };
+
+export default function Savings() {
+  const { uid, myName, transactions, weddingSettings, setWeddingSettings, setSyncing, setActiveTab } = useStore();
+  const settings = weddingSettings || { target: 50000000, tanggal: '', categories: DEFAULT_CATEGORIES };
+  const categories = Array.isArray(settings.categories) && settings.categories.length ? settings.categories : DEFAULT_CATEGORIES;
+  const actor = myName || 'Anonymous';
+  const saved = transactions.filter((tx) => tx.jenis === 'Pengeluaran' && tx.kategori === 'Tabungan');
+  const collected = saved.reduce((sum, tx) => sum + Number(tx.nominal || 0), 0);
+  const target = Number(settings.target) || 50000000;
+  const remaining = Math.max(0, target - collected);
+  const percent = Math.min(100, Math.round(collected / target * 100));
+  const daysToWedding = settings.tanggal ? Math.ceil((new Date(`${settings.tanggal}T00:00:00`) - new Date(new Date().setHours(0, 0, 0, 0))) / 86400000) : null;
+  const monthsLeft = daysToWedding > 0 ? Math.ceil(daysToWedding / 30) : null;
+  const [section, setSection] = useState('overview');
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ target: target.toString(), tanggal: settings.tanggal || '', categories });
+  const [error, setError] = useState('');
+  const allocation = useMemo(() => categories.reduce((sum, category) => sum + Number(category.target || 0), 0), [categories]);
+
+  const openEditor = () => { setError(''); setForm({ target: String(target), tanggal: settings.tanggal || '', categories: categories.map((category) => ({ ...category })) }); setEditing(true); };
+  const save = async (event) => {
+    event.preventDefault();
+    const numericTarget = Number(String(form.target).replace(/\D/g, ''));
+    if (numericTarget < 1000) { setError('Target minimal Rp 1.000.'); return; }
+    const next = { target: numericTarget, tanggal: form.tanggal, categories: form.categories.map((category) => ({ ...category, target: Number(category.target) || 0 })) };
+    setSyncing(true); setError(''); setWeddingSettings(next);
+    try { await set(weddingRef(uid), next); setEditing(false); } catch (cause) { if (['PERMISSION_DENIED', 'permission-denied', 'INVALID_ARGUMENT', 'invalid-argument'].includes(cause?.code)) setError('Target ditolak server. Coba lagi saat akun sudah tersinkron.'); else { await enqueueWeddingSettings(uid, next); setEditing(false); } } finally { setSyncing(false); }
+  };
+
+  return <div className="flex min-w-0 flex-col gap-4" aria-labelledby="savings-title">
+    <button type="button" className="min-h-11 self-start text-left text-xs text-[var(--accent-weak)]" onClick={() => setActiveTab('dashboard')} aria-label="Kembali ke Dashboard">← Kembali ke Dashboard</button>
+    <div className="flex min-w-0 items-center justify-between gap-3"><div className="min-w-0"><div className="text-xs text-[var(--text-secondary)]">Impian berdua</div><h2 id="savings-title" className="truncate text-lg font-bold">Dana Nikah</h2></div><button type="button" className="min-h-10 shrink-0 rounded-full border border-[var(--border-1)] px-3 text-xs font-bold" onClick={openEditor}>Edit target</button></div>
+    {settings.tanggal ? <div className="rounded-2xl border border-[var(--wedding-border)] bg-[var(--wedding-bg)] p-4"><div className="text-[10px] font-bold uppercase text-[var(--text-secondary)]">Hari H pernikahan</div><div className="mt-1 font-bold">{settings.tanggal}</div><div className="mt-1 text-sm text-[var(--wedding-weak)]">{daysToWedding < 0 ? `Terlewat ${Math.abs(daysToWedding)} hari` : daysToWedding === 0 ? 'Hari ini' : `${daysToWedding} hari lagi`}{monthsLeft ? ` · ${formatRp(Math.ceil(remaining / monthsLeft))}/bln` : ''}</div></div> : <button type="button" className="rounded-2xl border border-dashed border-[var(--border-2)] p-4 text-left text-sm text-[var(--text-secondary)]" onClick={openEditor}>Set tanggal hari H agar kebutuhan nabung per bulan bisa dihitung.</button>}
+    <div className="flex gap-1 rounded-xl border border-[var(--border-1)] bg-[var(--overlay)] p-1" role="tablist" aria-label="Bagian dana nikah"><button type="button" role="tab" value="overview" tabIndex={section === 'overview' ? 0 : -1} aria-selected={section === 'overview'} aria-controls="savings-overview" onKeyDown={(event) => tabKeyDown(event, ['overview', 'allocation'], setSection)} className={`min-h-10 flex-1 rounded-lg text-sm font-bold ${section === 'overview' ? 'bg-[var(--wedding-soft)] text-[var(--wedding-weak)]' : 'text-[var(--text-secondary)]'}`} onClick={() => setSection('overview')}>Overview</button><button type="button" role="tab" value="allocation" tabIndex={section === 'allocation' ? 0 : -1} aria-selected={section === 'allocation'} aria-controls="savings-allocation" onKeyDown={(event) => tabKeyDown(event, ['overview', 'allocation'], setSection)} className={`min-h-10 flex-1 rounded-lg text-sm font-bold ${section === 'allocation' ? 'bg-[var(--wedding-soft)] text-[var(--wedding-weak)]' : 'text-[var(--text-secondary)]'}`} onClick={() => setSection('allocation')}>Alokasi</button></div>
+    {collected === 0 && !editing && (
+      <div className="rounded-2xl border border-dashed border-[var(--wedding-border)] bg-[var(--wedding-bg)] p-5 text-center">
+        <span className="material-symbols-outlined text-3xl text-[var(--wedding)]" aria-hidden="true">favorite</span>
+        <p className="mt-2 text-sm font-bold">Belum ada tabungan Dana Nikah</p>
+        <p className="mx-auto mt-1 max-w-[32ch] text-xs leading-5 text-[var(--text-secondary)]">Sisihkan sedikit demi sedikit dari pemasukan. Setiap catatan kategori Tabungan akan menambah progres di sini.</p>
+        <button type="button" className="mt-4 min-h-11 rounded-xl bg-[var(--wedding)] px-4 text-sm font-bold text-white" onClick={openEditor}>Atur target Dana Nikah</button>
+      </div>
+    )}
+    {section === 'overview' ? <div id="savings-overview" role="tabpanel" className="flex flex-col gap-4"><section className="rounded-[var(--radius-card)] border border-[var(--wedding-border)] bg-gradient-to-br from-[var(--wedding-soft)] to-[var(--accent-weak)]/10 p-5"><div className="flex min-w-0 items-center gap-4"><div className="relative flex h-28 w-28 shrink-0 items-center justify-center rounded-full sm:h-32 sm:w-32" style={{ background: `conic-gradient(var(--wedding) ${percent}%, var(--surface-track) ${percent}% 100%)` }}><div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-[var(--bg-elevated)] sm:h-24 sm:w-24"><strong className="text-2xl">{percent}%</strong><span className="text-[9px] uppercase text-[var(--text-secondary)]">terkumpul</span></div></div><div className="min-w-0 flex-1"><Stat label="Terkumpul" value={formatRp(collected)} /><Stat label="Target" value={formatRp(target)} /><div className="my-2 h-px bg-[var(--surface-track)]" /><Stat label="Sisa target" value={remaining ? formatRp(remaining) : 'Lunas!'} /></div></div></section><h3 className="text-[11px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">Kontribusi</h3><div className="grid grid-cols-2 gap-2"><Contribution name={myName || 'Gue'} value={saved.filter((tx) => tx.addedBy === actor).reduce((sum, tx) => sum + Number(tx.nominal || 0), 0)} total={collected} /><Contribution name="Pasangan" value={saved.filter((tx) => tx.addedBy !== actor).reduce((sum, tx) => sum + Number(tx.nominal || 0), 0)} total={collected} /></div></div> : <section id="savings-allocation" role="tabpanel"><div className="mb-3 flex justify-between gap-3 rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-4"><div className="min-w-0"><div className="text-[10px] uppercase text-[var(--text-secondary)]">Total alokasi</div><strong className={allocation > target ? 'text-[var(--error)]' : 'text-[var(--success)]'}>{formatRp(allocation)}</strong></div><div className="min-w-0 text-right"><div className="text-[10px] uppercase text-[var(--text-secondary)]">Target</div><strong>{formatRp(target)}</strong></div></div><div className="grid grid-cols-2 gap-2">{categories.map((category) => <div className="min-w-0 rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-3 text-center" key={category.id}><div className="text-2xl">{category.icon}</div><div className="mt-1 truncate text-xs font-semibold" title={category.nama}>{category.nama}</div><div className="mt-1 truncate text-xs text-[var(--text-secondary)]">{formatRp(category.target)}</div><div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--surface-track)]"><div className="h-full rounded-full" style={{ width: `${Math.min(100, collected / Math.max(1, category.target) * 100)}%`, background: category.warna }} /></div></div>)}</div></section>}
+    {editing && <form className="max-h-[calc(100dvh-32px)] overflow-y-auto rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-modal)] p-5" onSubmit={save}><div className="mb-4 flex items-center justify-between gap-3"><h2 className="font-bold">Edit Dana Nikah</h2><button type="button" className="min-h-10 text-xs text-[var(--text-secondary)]" onClick={() => setEditing(false)}>Tutup</button></div><label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="wedding-target">Target<input id="wedding-target" required className={`${inputClass} mt-1`} inputMode="numeric" value={form.target} onChange={(event) => setForm({ ...form, target: event.target.value })} /></label><label className="mb-4 block text-xs text-[var(--text-secondary)]" htmlFor="wedding-date">Tanggal hari H<input id="wedding-date" className={`${inputClass} mt-1`} type="date" value={form.tanggal} onChange={(event) => setForm({ ...form, tanggal: event.target.value })} /></label><h3 className="mb-2 text-xs font-semibold text-[var(--text-secondary)]">Target kategori</h3>{form.categories.map((category, index) => <label className="mb-2 block text-xs text-[var(--text-secondary)]" htmlFor={`cat-${category.id}`} key={category.id}>{category.nama}<input id={`cat-${category.id}`} className={`${inputClass} mt-1`} inputMode="numeric" value={category.target} onChange={(event) => { const next = [...form.categories]; next[index] = { ...next[index], target: event.target.value }; setForm({ ...form, categories: next }); }} /></label>)}{error && <p className="mb-3 text-xs text-[var(--error-weak)]" role="alert">{error}</p>}<div className="mt-4 flex gap-2"><button type="button" className="min-h-11 flex-1 rounded-xl border border-[var(--border-1)]" onClick={() => setEditing(false)}>Batal</button><button type="submit" className="min-h-11 flex-1 rounded-xl bg-[var(--accent)] font-bold">Simpan</button></div></form>}
+  </div>;
+}
+
+function Stat({ label, value }) { return <div><div className="truncate text-[10px] uppercase text-[var(--text-secondary)]">{label}</div><div className="mt-1 truncate text-sm font-bold">{value}</div></div>; }
+function Contribution({ name, value, total }) { const percent = total ? Math.round(value / total * 100) : 0; return <div className="min-w-0 rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-3"><div className="truncate text-xs text-[var(--text-secondary)]">{name}</div><div className="mt-1 truncate text-sm font-bold text-[var(--accent-weak)]">{formatRp(value)}</div><div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--surface-track)]"><div className="h-full rounded-full bg-[var(--accent-weak)]" style={{ width: `${percent}%` }} /></div><div className="mt-1 text-[10px] text-[var(--text-secondary)]">{percent}%</div></div>; }

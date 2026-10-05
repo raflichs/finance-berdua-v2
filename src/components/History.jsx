@@ -11,7 +11,7 @@ const monthLabel = (key) => new Intl.DateTimeFormat('id-ID', { month: 'long', ye
 const recentMonths = () => Array.from({ length: 6 }, (_, index) => { const date = new Date(); date.setDate(1); date.setMonth(date.getMonth() - index); return toLocalMonthKey(date); });
 
 export default function History() {
-  const { uid, myName, transactions, setTransactions, setSyncing, setActiveTab } = useStore();
+  const { uid, workspaceId, transactions, setTransactions, setSyncing, setActiveTab } = useStore();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('Semua');
   const [accountFilter, setAccountFilter] = useState('Semua');
@@ -42,12 +42,12 @@ export default function History() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [editing]);
 
-  const filtered = useMemo(() => {
+   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return transactions.filter((tx) => {
       const txMonth = String(tx.tanggal || '').slice(0, 7);
       const matchesMonth = query ? true : month === 'recent' ? months.includes(txMonth) : txMonth === month;
-      const matchesSearch = !query || [tx.deskripsi, tx.kategori, tx.addedBy, tx.nominal].some((value) => String(value || '').toLowerCase().includes(query));
+      const matchesSearch = !query || [tx.deskripsi, tx.kategori, tx.addedByName, tx.addedBy, tx.nominal].some((value) => String(value || '').toLowerCase().includes(query));
       const isTransfer = tx.jenis === 'CashMove';
       const matchesType = filterType === 'Semua' || tx.jenis === filterType;
       const matchesAccount = accountFilter === 'Semua'
@@ -69,7 +69,7 @@ export default function History() {
     mutate(async () => {
       const next = transactions.filter((current) => current.id !== tx.id);
       setTransactions(next);
-      try { await removeTx(uid, tx.id); } catch (cause) { if (isServerError(cause)) { setTransactions(transactions); throw cause; } await enqueueRemoveTx(uid, tx.id); }
+      try { await removeTx(workspaceId, tx.id); } catch (cause) { if (isServerError(cause)) { setTransactions(transactions); throw cause; } await enqueueRemoveTx(uid, tx.id); }
     });
   };
   const saveEdit = (event) => {
@@ -78,7 +78,7 @@ export default function History() {
     if (!tx.nominal || tx.nominal < 1000 || !tx.tanggal) { setError('Nominal minimal Rp 1.000 dan tanggal wajib diisi.'); return; }
     mutate(async () => {
       setTransactions(transactions.map((current) => current.id === tx.id ? tx : current));
-      try { await saveTx(uid, tx); } catch (cause) { if (isServerError(cause)) { setTransactions(transactions); throw cause; } await enqueueTx(uid, tx); }
+      try { await saveTx(workspaceId, tx); } catch (cause) { if (isServerError(cause)) { setTransactions(transactions); throw cause; } await enqueueTx(uid, tx); }
       setEditing(null);
     });
   };
@@ -201,14 +201,14 @@ export default function History() {
           <ul className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)]">
             {items.map((tx) => {
               const cashMove = tx.jenis === 'CashMove';
-              const mine = tx.addedBy === (myName || 'Anonymous');
+              const mine = tx.addedByUid === uid;
               return (
                 <li key={tx.id} className="flex min-w-0 items-center gap-2 border-b border-[var(--border-1)] p-3 last:border-0">
                   <span className={`transaction-icon material-symbols-outlined flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tx.jenis === 'Pemasukan' ? 'bg-[var(--success)]/10 text-[var(--success)]' : cashMove ? 'bg-[var(--info-soft)] text-[var(--info)]' : 'bg-[var(--error)]/10 text-[var(--error)]'}`} aria-hidden="true">{cashMove ? 'swap_horiz' : iconFor(tx.kategori)}</span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-semibold">{tx.deskripsi || tx.kategori}</div>
                     <div className="truncate text-[11px] text-[var(--text-secondary)]">{tx.tanggal || '-'} · {transactionAccount(tx)}{cashMove && ' · Transfer Cash'}</div>
-                    <div className="truncate text-[10px] text-[var(--accent-weak)]">{mine ? 'Gue' : tx.addedBy || 'Tidak diketahui'}</div>
+                    <div className="truncate text-[10px] text-[var(--accent-weak)]">{mine ? 'Gue' : tx.addedByName || 'Tidak diketahui'}</div>
                   </div>
                   <div className="flex max-w-[44%] shrink-0 flex-col items-end gap-1">
                     <div className={`truncate text-[13px] font-bold ${tx.jenis === 'Pemasukan' ? 'text-[var(--success)]' : cashMove ? 'text-[var(--info)]' : 'text-[var(--error)]'}`}>{cashMove ? 'Transfer Cash' : `${tx.jenis === 'Pemasukan' ? '+' : '-'}${formatRp(tx.nominal)}`}</div>

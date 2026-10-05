@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import useStore, { calcWallet } from '../store/useStore';
 import { saveCashMove, saveTx } from '../lib/db';
 import { enqueueOperation, enqueueTx } from '../lib/offlineQueue';
+import { auth } from '../config/firebase';
 
 const categories = { Pemasukan: ['Gaji', 'Bonus', 'Lainnya'], Pengeluaran: ['Makan', 'Transport', 'Belanja', 'Tagihan', 'Nongkrong', 'Hiburan', 'Tabungan', 'Pulsa/Kuota', 'Lainnya'] };
 const icons = { Makan: 'restaurant', Transport: 'directions_car', Belanja: 'shopping_cart', Tagihan: 'receipt_long', Nongkrong: 'local_cafe', Hiburan: 'movie', Tabungan: 'savings', 'Pulsa/Kuota': 'phone_android', Gaji: 'payments', Bonus: 'redeem', Lainnya: 'category' };
 
 export default function InputTransaction() {
-  const { uid, myName, parseMoney, toLocalDateKey, transactions, setTransactions, setActiveTab, setSyncing } = useStore();
+  const { uid, workspaceId, parseMoney, toLocalDateKey, transactions, setTransactions, setActiveTab, setSyncing } = useStore();
   const wallet = useMemo(() => calcWallet(transactions), [transactions]);
   const moveTab = (event, values, setValue) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -61,17 +62,34 @@ export default function InputTransaction() {
   const reset = () => { setNominal(''); setAdminFee(''); setDeskripsi(''); setTouched(false); };
   const submit = async (event) => {
     event.preventDefault(); setTouched(true); if (validationError || saving) return;
+    if (!workspaceId) { setError('Workspace belum aktif.'); return; }
     setSaving(true); setError(''); setSyncing(true);
+    const currentUser = auth.currentUser;
+    const addedByUid = currentUser?.uid || uid;
+    const addedByName = currentUser?.displayName || currentUser?.email || 'Tidak diketahui';
     try {
-      const base = { tanggal, nominal: amount, addedBy: myName || 'Anonymous' };
+      const base = { tanggal, nominal: amount, addedByUid, addedByName, addedBy: addedByName };
       if (mode === 'cash') {
         const id = Date.now();
         const move = { ...base, id, jenis: 'CashMove', kategori: 'Atur Cash', deskripsi: deskripsi.trim() || (cashDirection === 'withdraw' ? 'Tarik cash' : 'Setor cash ke QRIS') };
         const adminTx = fee > 0 ? { ...base, id: id + 1, jenis: 'Pengeluaran', kategori: 'Tagihan', deskripsi: cashDirection === 'withdraw' ? 'Biaya admin tarik cash' : 'Biaya admin setor cash', nominal: fee, account: source } : null;
-         const cashMove = { ...move, fromAccount: source, toAccount: target }; try { await saveCashMove(uid, cashMove, adminTx); } catch (cause) { if (['PERMISSION_DENIED', 'permission-denied', 'INVALID_ARGUMENT', 'invalid-argument'].includes(cause?.code)) throw cause; await enqueueOperation(uid, `cash:${id}`, { type: 'cashMove', move: cashMove, adminTx }); setTransactions([...transactions, cashMove, ...(adminTx ? [adminTx] : [])]); }
+        const cashMove = { ...move, fromAccount: source, toAccount: target };
+        try {
+          await saveCashMove(workspaceId, cashMove, adminTx);
+        } catch (cause) {
+          if (['PERMISSION_DENIED', 'permission-denied', 'INVALID_ARGUMENT', 'invalid-argument'].includes(cause?.code)) throw cause;
+          await enqueueOperation(uid, `cash:${id}`, { type: 'cashMove', move: cashMove, adminTx });
+          setTransactions([...transactions, cashMove, ...(adminTx ? [adminTx] : [])]);
+        }
       } else {
         const transaction = { ...base, id: Date.now(), jenis, kategori, deskripsi: deskripsi.trim() || (kategori === 'Tabungan' ? 'Setor Dana Nikah' : '-'), account };
-        try { await saveTx(uid, transaction); } catch (cause) { if (['PERMISSION_DENIED', 'permission-denied', 'INVALID_ARGUMENT', 'invalid-argument'].includes(cause?.code)) throw cause; await enqueueTx(uid, transaction); setTransactions([...transactions, transaction]); }
+        try {
+          await saveTx(workspaceId, transaction);
+        } catch (cause) {
+          if (['PERMISSION_DENIED', 'permission-denied', 'INVALID_ARGUMENT', 'invalid-argument'].includes(cause?.code)) throw cause;
+          await enqueueTx(uid, transaction);
+          setTransactions([...transactions, transaction]);
+        }
       }
       reset(); setActiveTab('dashboard');
     } catch { setError('Transaksi gagal disimpan. Coba lagi saat online.'); } finally { setSaving(false); setSyncing(false); }

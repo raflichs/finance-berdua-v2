@@ -41,11 +41,15 @@ const useStore = create((set) => ({
   myName: '',
   setAuth: (uid, myName) => set({ uid, myName }),
 
-  // Workspace foundation; reads stay user-scoped until App integration is safe.
+  // Workspace
   workspaceId: null,
   workspace: null,
-  setWorkspace: (workspaceId, workspace = null) => set({ workspaceId, workspace }),
-  clearWorkspace: () => set({ workspaceId: null, workspace: null }),
+  workspaceLoading: false,
+  workspaceError: '',
+  setWorkspace: (workspaceId, workspace = null) => set({ workspaceId, workspace, workspaceError: '' }),
+  setWorkspaceLoading: (loading) => set({ workspaceLoading: loading }),
+  setWorkspaceError: (error) => set({ workspaceError: error }),
+  clearWorkspace: () => set({ workspaceId: null, workspace: null, workspaceError: '', workspaceLoading: false }),
 
   // Transactions
   transactions: [],

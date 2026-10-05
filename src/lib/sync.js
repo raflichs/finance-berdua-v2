@@ -1,9 +1,9 @@
-import { debtRef, onValue, off, txRef, weddingRef } from './db';
+import { workspaceDebtRef, workspaceTxRef, workspaceWeddingRef, onValue, off } from './db';
 
 const values = (data) => data ? Object.values(data) : [];
 const errorMessage = (error) => error?.code === 'PERMISSION_DENIED' ? 'Akses database ditolak. Periksa akun atau RTDB Rules.' : 'Sinkronisasi gagal. Periksa koneksi internet.';
 
-export const subscribeToUserData = (uid, handlers) => {
+export const subscribeToWorkspaceData = (workspaceId, handlers) => {
   let active = true;
   const initialResources = new Set();
   const failedResources = new Set();
@@ -15,14 +15,14 @@ export const subscribeToUserData = (uid, handlers) => {
       if (!failedResources.size) handlers.onError?.('');
     }
   };
-   const subscriptions = [
-     ['transactions', txRef(uid), (snapshot) => handlers.onTransactions(values(snapshot.val()))],
-     ['debts', debtRef(uid), (snapshot) => handlers.onDebts(values(snapshot.val()).map((debt) => {
-       const cicilan = debt.cicilan || {};
-       return { ...debt, cicilan: Array.isArray(cicilan) ? cicilan : values(cicilan) };
-     }))],
-     ['wedding', weddingRef(uid), (snapshot) => handlers.onWeddingSettings(snapshot.val())],
-   ];
+  const subscriptions = [
+    ['transactions', workspaceTxRef(workspaceId), (snapshot) => handlers.onTransactions(values(snapshot.val()))],
+    ['debts', workspaceDebtRef(workspaceId), (snapshot) => handlers.onDebts(values(snapshot.val()).map((debt) => {
+      const cicilan = debt.cicilan || {};
+      return { ...debt, cicilan: Array.isArray(cicilan) ? cicilan : values(cicilan) };
+    }))],
+    ['wedding', workspaceWeddingRef(workspaceId), (snapshot) => handlers.onWeddingSettings(snapshot.val())],
+  ];
   const listeners = [];
   subscriptions.forEach(([resource, databaseRef, callback]) => {
     const onError = (error) => {

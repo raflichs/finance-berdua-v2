@@ -9,22 +9,22 @@ const withFlushMutex = (task) => {
   return next;
 };
 
-const applyOperation = (uid, operation) => {
-   if (operation.type === 'transaction') return saveTx(uid, operation.tx);
-   if (operation.type === 'cashMove') return saveCashMove(uid, operation.move, operation.adminTx);
+const applyOperation = (workspaceId, operation) => {
+   if (operation.type === 'transaction') return saveTx(workspaceId, operation.tx);
+   if (operation.type === 'cashMove') return saveCashMove(workspaceId, operation.move, operation.adminTx);
    if (operation.type === 'debtPayment') {
      const debt = { ...operation.debt, cicilan: Array.isArray(operation.debt.cicilan) ? operation.debt.cicilan : [] };
-     return saveDebtPayment(uid, debt, { ...operation.transaction, paymentOperationId: operation.transaction.cicilanId });
+     return saveDebtPayment(workspaceId, debt, { ...operation.transaction, paymentOperationId: operation.transaction.cicilanId });
    }
-   if (operation.type === 'removeTransaction') return removeTx(uid, operation.id);
-   if (operation.type === 'debt') return saveDebt(uid, operation.debt);
-   if (operation.type === 'removeDebt') return removeDebt(uid, operation.id);
-   if (operation.type === 'weddingSettings') return saveWeddingSettings(uid, operation.settings);
+   if (operation.type === 'removeTransaction') return removeTx(workspaceId, operation.id);
+   if (operation.type === 'debt') return saveDebt(workspaceId, operation.debt);
+   if (operation.type === 'removeDebt') return removeDebt(workspaceId, operation.id);
+   if (operation.type === 'weddingSettings') return saveWeddingSettings(workspaceId, operation.settings);
    throw new Error(`Unknown queued operation: ${operation.type}`);
  };
 
-export const flushTxQueue = async (uid, onProgress) => withFlushMutex(async () => {
-  if (!navigator.onLine) return { flushed: 0, failed: 0, skipped: 0, errors: [] };
+export const flushTxQueue = async (uid, workspaceId, onProgress) => withFlushMutex(async () => {
+  if (!navigator.onLine || !workspaceId) return { flushed: 0, failed: 0, skipped: 0, errors: [] };
   const queued = await getQueuedOperations(uid);
   const result = { flushed: 0, failed: 0, skipped: 0, errors: [] };
   const failedIds = new Set();
@@ -35,7 +35,7 @@ export const flushTxQueue = async (uid, onProgress) => withFlushMutex(async () =
       continue;
     }
     try {
-      await applyOperation(uid, item.operation);
+      await applyOperation(workspaceId, item.operation);
       await removeQueuedOperation(item.operationId);
 
       result.flushed += 1;

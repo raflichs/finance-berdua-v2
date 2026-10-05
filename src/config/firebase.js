@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { browserLocalPersistence, createUserWithEmailAndPassword, getAuth, linkWithCredential, onAuthStateChanged, sendPasswordResetEmail, setPersistence, signInAnonymously, signInWithEmailAndPassword, updateProfile, EmailAuthProvider, signOut } from 'firebase/auth';
+import { browserLocalPersistence, createUserWithEmailAndPassword, getAuth, linkWithCredential, onAuthStateChanged, sendPasswordResetEmail, setPersistence, signInWithEmailAndPassword, updateProfile, EmailAuthProvider, signOut } from 'firebase/auth';
 import { getDatabase, ref, get, set, push, remove, update, runTransaction, onValue, off } from 'firebase/database';
 
 const FIREBASE_CONFIG = {
@@ -17,7 +17,6 @@ export const auth = getAuth(app);
 export const db = getDatabase(app);
 
 export const prepareAuth = () => setPersistence(auth, browserLocalPersistence);
-export const loginAnonymous = () => signInAnonymously(auth);
 export const loginWithEmail = (email, password) => signInWithEmailAndPassword(auth, email.trim(), password);
 export const resetPassword = (email) => sendPasswordResetEmail(auth, email.trim());
 export const createLinkedAccount = async (email, password, displayName) => {

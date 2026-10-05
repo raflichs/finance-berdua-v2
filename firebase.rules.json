@@ -1,6 +1,53 @@
 {
   "rules": {
     "finance_berdua_v2": {
+      "memberships": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": false,
+          "$workspaceId": {
+            ".validate": "newData.hasChildren(['workspaceId', 'role']) && newData.child('workspaceId').isString() && newData.child('role').isString()"
+          }
+        }
+      },
+      "workspaces": {
+        "$workspaceId": {
+          ".read": "auth != null && data.child('members').child(auth.uid).exists()",
+          ".write": false,
+          "members": {
+            ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
+            ".write": false
+          },
+          "ownerUid": {
+            ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
+            ".write": false
+          },
+          "transactions": {
+            "$id": {
+              ".read": "auth != null && data.parent().parent().child('members').child(auth.uid).exists()",
+              ".write": "auth != null && data.parent().parent().child('members').child(auth.uid).exists()",
+              ".validate": "newData.hasChildren(['id', 'tanggal', 'jenis', 'kategori', 'deskripsi', 'nominal', 'addedByUid', 'addedByName']) && newData.child('id').isNumber() && (!data.exists() || data.child('id').val() === newData.child('id').val()) && newData.child('tanggal').isString() && newData.child('tanggal').val().matches(/^\\d{4}-\\d{2}-\\d{2}$/) && newData.child('jenis').isString() && (newData.child('jenis').val() === 'Pemasukan' || newData.child('jenis').val() === 'Pengeluaran' || newData.child('jenis').val() === 'CashMove') && newData.child('kategori').isString() && newData.child('deskripsi').isString() && newData.child('nominal').isNumber() && newData.child('nominal').val() > 0 && newData.child('addedByUid').isString() && newData.child('addedByUid').val() === auth.uid && newData.child('addedByName').isString() && (newData.child('jenis').val() === 'CashMove' ? newData.hasChildren(['fromAccount', 'toAccount']) && newData.child('fromAccount').isString() && newData.child('toAccount').isString() && (newData.child('fromAccount').val() === 'QRIS' || newData.child('fromAccount').val() === 'Cash') && (newData.child('toAccount').val() === 'QRIS' || newData.child('toAccount').val() === 'Cash') && newData.child('fromAccount').val() !== newData.child('toAccount').val() : newData.hasChildren(['account']) && newData.child('account').isString() && (newData.child('account').val() === 'QRIS' || newData.child('account').val() === 'Cash'))"
+            }
+          },
+          "debts": {
+            "$id": {
+              ".read": "auth != null && data.parent().parent().child('members').child(auth.uid).exists()",
+              ".write": "auth != null && data.parent().parent().child('members').child(auth.uid).exists()",
+              ".validate": "newData.hasChildren(['id', 'name', 'type', 'total', 'paid', 'keterangan', 'createdByUid', 'createdByName']) && newData.child('id').isNumber() && (!data.exists() || data.child('id').val() === newData.child('id').val()) && newData.child('name').isString() && newData.child('type').isString() && (newData.child('type').val() === 'Hutang' || newData.child('type').val() === 'Piutang') && newData.child('total').isNumber() && newData.child('total').val() > 0 && newData.child('paid').isNumber() && newData.child('paid').val() >= 0 && newData.child('paid').val() <= newData.child('total').val() && newData.child('keterangan').isString() && newData.child('createdByUid').isString() && newData.child('createdByUid').val() === auth.uid && newData.child('createdByName').isString() && (!newData.child('jatuhTempo').exists() || (newData.child('jatuhTempo').isString() && newData.child('jatuhTempo').val().matches(/^\\d{4}-\\d{2}-\\d{2}$/)))",
+              "cicilan": {
+                "$cicilanId": {
+                  ".validate": "newData.hasChildren(['id', 'nominal', 'tanggal', 'txId']) && newData.child('id').isNumber() && (!data.exists() || data.child('id').val() === newData.child('id').val()) && newData.child('nominal').isNumber() && newData.child('nominal').val() > 0 && newData.child('tanggal').isString() && newData.child('tanggal').val().matches(/^\\d{4}-\\d{2}-\\d{2}$/) && newData.child('txId').isNumber() && (!newData.child('catatan').exists() || newData.child('catatan').isString())"
+                }
+              }
+            }
+          },
+          "wedding_settings": {
+            ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
+            ".write": "auth != null && data.parent().child('members').child(auth.uid).exists()",
+            ".validate": "newData.hasChildren(['target', 'categories']) && newData.child('target').isNumber() && newData.child('target').val() >= 0 && newData.child('categories').hasChildren()"
+          }
+        }
+      },
       "users": {
         "$uid": {
           ".read": "auth != null && auth.uid === $uid",
@@ -10,16 +57,16 @@
               ".validate": "newData.hasChildren(['id', 'tanggal', 'jenis', 'kategori', 'deskripsi', 'nominal', 'addedBy']) && newData.child('id').isNumber() && (!data.exists() || data.child('id').val() === newData.child('id').val()) && newData.child('tanggal').isString() && newData.child('tanggal').val().matches(/^\\d{4}-\\d{2}-\\d{2}$/) && newData.child('jenis').isString() && (newData.child('jenis').val() === 'Pemasukan' || newData.child('jenis').val() === 'Pengeluaran' || newData.child('jenis').val() === 'CashMove') && newData.child('kategori').isString() && newData.child('deskripsi').isString() && newData.child('nominal').isNumber() && newData.child('nominal').val() > 0 && newData.child('addedBy').isString() && (newData.child('jenis').val() === 'CashMove' ? newData.hasChildren(['fromAccount', 'toAccount']) && newData.child('fromAccount').isString() && newData.child('toAccount').isString() && (newData.child('fromAccount').val() === 'QRIS' || newData.child('fromAccount').val() === 'Cash') && (newData.child('toAccount').val() === 'QRIS' || newData.child('toAccount').val() === 'Cash') && newData.child('fromAccount').val() !== newData.child('toAccount').val() : newData.hasChildren(['account']) && newData.child('account').isString() && (newData.child('account').val() === 'QRIS' || newData.child('account').val() === 'Cash'))"
             }
           },
-           "debts": {
-             "$id": {
-               ".validate": "newData.hasChildren(['id', 'name', 'type', 'total', 'paid', 'keterangan']) && newData.child('id').isNumber() && (!data.exists() || data.child('id').val() === newData.child('id').val()) && newData.child('name').isString() && newData.child('type').isString() && (newData.child('type').val() === 'Hutang' || newData.child('type').val() === 'Piutang') && newData.child('total').isNumber() && newData.child('total').val() > 0 && newData.child('paid').isNumber() && newData.child('paid').val() >= 0 && newData.child('paid').val() <= newData.child('total').val() && newData.child('keterangan').isString() && (!newData.child('jatuhTempo').exists() || (newData.child('jatuhTempo').isString() && newData.child('jatuhTempo').val().matches(/^\\d{4}-\\d{2}-\\d{2}$/)))",
-               "cicilan": {
-                 "$cicilanId": {
-                   ".validate": "newData.hasChildren(['id', 'nominal', 'tanggal', 'txId']) && newData.child('id').isNumber() && (!data.exists() || data.child('id').val() === newData.child('id').val()) && newData.child('nominal').isNumber() && newData.child('nominal').val() > 0 && newData.child('tanggal').isString() && newData.child('tanggal').val().matches(/^\\d{4}-\\d{2}-\\d{2}$/) && newData.child('txId').isNumber() && (!newData.child('catatan').exists() || newData.child('catatan').isString())"
-                 }
-               }
-             }
-           },
+          "debts": {
+            "$id": {
+              ".validate": "newData.hasChildren(['id', 'name', 'type', 'total', 'paid', 'keterangan']) && newData.child('id').isNumber() && (!data.exists() || data.child('id').val() === newData.child('id').val()) && newData.child('name').isString() && newData.child('type').isString() && (newData.child('type').val() === 'Hutang' || newData.child('type').val() === 'Piutang') && newData.child('total').isNumber() && newData.child('total').val() > 0 && newData.child('paid').isNumber() && newData.child('paid').val() >= 0 && newData.child('paid').val() <= newData.child('total').val() && newData.child('keterangan').isString() && (!newData.child('jatuhTempo').exists() || (newData.child('jatuhTempo').isString() && newData.child('jatuhTempo').val().matches(/^\\d{4}-\\d{2}-\\d{2}$/)))",
+              "cicilan": {
+                "$cicilanId": {
+                  ".validate": "newData.hasChildren(['id', 'nominal', 'tanggal', 'txId']) && newData.child('id').isNumber() && (!data.exists() || data.child('id').val() === newData.child('id').val()) && newData.child('nominal').isNumber() && newData.child('nominal').val() > 0 && newData.child('tanggal').isString() && newData.child('tanggal').val().matches(/^\\d{4}-\\d{2}-\\d{2}$/) && newData.child('txId').isNumber() && (!newData.child('catatan').exists() || newData.child('catatan').isString())"
+                }
+              }
+            }
+          },
           "wedding_settings": {
             ".validate": "newData.hasChildren(['target', 'categories']) && newData.child('target').isNumber() && newData.child('target').val() >= 0 && newData.child('categories').hasChildren()"
           },

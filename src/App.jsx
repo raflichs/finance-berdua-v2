@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import useStore from './store/useStore';
-import { auth, loginAnonymous, loginWithEmail, onAuthStateChanged, prepareAuth } from './config/firebase';
+import { auth, loginWithEmail, onAuthStateChanged, prepareAuth } from './config/firebase';
 import Bnav from './components/Bnav';
-import { subscribeToUserData } from './lib/sync';
+import { subscribeToWorkspaceData } from './lib/sync';
 import { countQueuedTxs, resetQueuedAttempts } from './lib/offlineQueue';
 import { flushTxQueue } from './lib/queueSync';
+import { resolveUserWorkspace } from './lib/workspace';
 import AccountPanel from './components/AccountPanel';
 
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -27,37 +28,50 @@ function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
-  const { activeTab, setAuth, uid, online, syncing, syncError, lastSyncedAt, syncStale, setTransactions, setDebts, setWeddingSettings, setSyncing, setSyncError, setLastSyncedAt, setSyncStale } = useStore();
+  const { activeTab, setAuth, uid, online, syncing, syncError, lastSyncedAt, syncStale, setTransactions, setDebts, setWeddingSettings, setSyncing, setSyncError, setLastSyncedAt, setSyncStale, workspaceId, workspaceLoading, workspaceError, setWorkspace, setWorkspaceLoading, setWorkspaceError, clearWorkspace } = useStore();
 
   useEffect(() => {
     let cancelled = false;
     prepareAuth().catch(() => undefined);
-    const unsub = onAuthStateChanged(auth, (nextUser) => {
+    const unsub = onAuthStateChanged(auth, async (nextUser) => {
       if (cancelled) return;
       setUser(nextUser);
       if (nextUser) {
         setAuth(nextUser.uid, nextUser.displayName || '');
-        setAuthReady(true);
+        setWorkspaceLoading(true);
+        try {
+          const resolved = await resolveUserWorkspace(nextUser.uid);
+          if (cancelled) return;
+          if (resolved) {
+            setWorkspace(resolved.workspaceId, resolved.workspace);
+          } else {
+            clearWorkspace();
+            setWorkspaceError('Akun belum terhubung ke workspace. Hubungi administrator.');
+          }
+        } catch {
+          // eslint-disable-next-line no-empty
+          if (!cancelled) setWorkspaceError('Gagal memuat workspace.');
+        } finally {
+          if (!cancelled) setWorkspaceLoading(false);
+        }
       } else {
         setAuth(null, '');
-        // Tahan splash sampai percobaan anonymous selesai agar tidak flash AuthScreen
-        loginAnonymous(auth).catch(() => {
-          if (!cancelled) setAuthReady(true);
-        });
+        clearWorkspace();
       }
+      setAuthReady(true);
     });
     return () => {
       cancelled = true;
       unsub();
     };
-  }, [setAuth]);
+  }, [setAuth, setWorkspace, clearWorkspace, setWorkspaceLoading, setWorkspaceError]);
 
   useEffect(() => {
-    if (!uid) return undefined;
+    if (!uid || !workspaceId) return undefined;
 
     setSyncing(true);
     setLastSyncedAt(null);
-    return subscribeToUserData(uid, {
+    return subscribeToWorkspaceData(workspaceId, {
       onTransactions: setTransactions,
       onDebts: setDebts,
       onWeddingSettings: setWeddingSettings,
@@ -65,7 +79,7 @@ function App() {
        onSnapshot: setLastSyncedAt,
        onError: setSyncError,
     });
-  }, [uid, setDebts, setLastSyncedAt, setSyncError, setSyncing, setTransactions, setWeddingSettings]);
+  }, [uid, workspaceId, setDebts, setLastSyncedAt, setSyncError, setSyncing, setTransactions, setWeddingSettings]);
 
   useEffect(() => {
     if (!lastSyncedAt) return undefined;
@@ -84,9 +98,9 @@ function App() {
   }, []);
 
    useEffect(() => {
-     if (!uid) return undefined;
+     if (!uid || !workspaceId) return undefined;
      const flush = async () => {
-       const result = await flushTxQueue(uid, () => setPendingCount((count) => Math.max(0, count - 1)));
+       const result = await flushTxQueue(uid, workspaceId, () => setPendingCount((count) => Math.max(0, count - 1)));
        setPendingCount(await countQueuedTxs(uid));
        if (result.failed > 0 || result.skipped > 0) {
          const errorDetails = result.errors.map(e => `${e.code}`).join(', ');
@@ -96,10 +110,10 @@ function App() {
      countQueuedTxs(uid).then(setPendingCount).catch(() => setPendingCount(0));
      if (online) flush();
      return undefined;
-   }, [online, uid, setSyncError]);
+   }, [online, uid, workspaceId, setSyncError]);
 
-  if (!authReady) {
-    return <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-[var(--bg)] text-[var(--text-primary)]" role="status" aria-live="polite"><span className="material-symbols-outlined animate-spin text-4xl" aria-hidden="true">progress_activity</span><span className="text-sm text-[var(--text-secondary)]">Memuat akun…</span></div>;
+  if (!authReady || (uid && workspaceLoading)) {
+    return <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-[var(--bg)] text-[var(--text-primary)]" role="status" aria-live="polite"><span className="material-symbols-outlined animate-spin text-4xl" aria-hidden="true">progress_activity</span><span className="text-sm text-[var(--text-secondary)]">{workspaceLoading ? 'Memuat workspace…' : 'Memuat akun…'}</span></div>;
   }
 
   // Bnav obstruction: height 72 + bottom offset 16 + content gap 16
@@ -108,6 +122,19 @@ function App() {
 
   if (!uid) {
     return <AuthScreen />;
+  }
+
+  if (workspaceError || !workspaceId) {
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-[var(--bg)] p-4 text-[var(--text-primary)]">
+        <div className="w-full max-w-sm rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-5 text-center">
+          <span className="material-symbols-outlined text-4xl text-[var(--warning)]" aria-hidden="true">no_accounts</span>
+          <h1 className="mt-3 text-lg font-bold">Akses Belum Dikonfigurasi</h1>
+          <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">{workspaceError || 'Akun berhasil login, tetapi belum terhubung ke workspace. Hubungi administrator untuk menyelesaikan konfigurasi akun.'}</p>
+          <button type="button" className="mt-5 min-h-11 w-full rounded-xl border border-[var(--border-1)] text-xs font-semibold" onClick={() => auth.signOut()}>Logout</button>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -129,7 +156,7 @@ function App() {
            <p className="truncate text-xs font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>Finance Berdua</p>
            <h1 className="truncate text-[17px] font-bold tracking-tight">{TAB_TITLES[activeTab]}</h1>
         </div>
-                 <div className="flex shrink-0 items-center gap-2"><span className={`inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-bold ${online ? 'border-[var(--success)]/30 bg-[var(--success)]/10 text-[var(--success)]' : 'border-[var(--warning)]/30 bg-[var(--warning)]/10 text-[var(--warning-weak)]'}`} role="status" aria-live="polite"><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{online ? (pendingCount ? `${pendingCount} belum tersinkron` : syncing ? 'Menyinkronkan' : 'Online') : (pendingCount ? `${pendingCount} belum tersinkron` : 'Offline')}</span><AccountPanel user={user} pendingCount={pendingCount} />{(pendingCount > 0 || syncError) && <button type="button" className="min-h-7 rounded-full border border-[var(--border-1)] px-2 text-[10px] font-bold text-[var(--accent-weak)]" onClick={async () => { if (!uid) return; await resetQueuedAttempts(uid); if (online) await flushTxQueue(uid); setPendingCount(await countQueuedTxs(uid)); setSyncError(''); }}>Retry</button>}</div>
+                 <div className="flex shrink-0 items-center gap-2"><span className={`inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-bold ${online ? 'border-[var(--success)]/30 bg-[var(--success)]/10 text-[var(--success)]' : 'border-[var(--warning)]/30 bg-[var(--warning)]/10 text-[var(--warning-weak)]'}`} role="status" aria-live="polite"><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{online ? (pendingCount ? `${pendingCount} belum tersinkron` : syncing ? 'Menyinkronkan' : 'Online') : (pendingCount ? `${pendingCount} belum tersinkron` : 'Offline')}</span><AccountPanel user={user} pendingCount={pendingCount} />{(pendingCount > 0 || syncError) && <button type="button" className="min-h-7 rounded-full border border-[var(--border-1)] px-2 text-[10px] font-bold text-[var(--accent-weak)]" onClick={async () => { if (!uid || !workspaceId) return; await resetQueuedAttempts(uid); if (online) await flushTxQueue(uid, workspaceId); setPendingCount(await countQueuedTxs(uid)); setSyncError(''); }}>Retry</button>}</div>
       </header>
        {!online && <div className="border-b border-[var(--warning)]/20 bg-[var(--warning)]/10 px-3 py-2 text-center text-xs font-semibold text-[var(--warning-weak)]" role="status" aria-live="polite">Offline — transaksi baru masuk antrean lokal.</div>}
         {syncError && <div className="border-b border-[var(--error)]/20 bg-[var(--error)]/10 px-3 py-2 text-center text-xs font-semibold text-[var(--error-weak)]" role="alert">{syncError}</div>}

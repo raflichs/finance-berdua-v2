@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react';
 import useStore from '../store/useStore';
 import { saveTx } from '../lib/db';
 import { enqueueTx } from '../lib/offlineQueue';
+import { auth } from '../config/firebase';
 
 const parse = (value) => Number(String(value).replace(/\D/g, '')) || 0;
 const format = (value) => `Rp ${value.toLocaleString('id-ID')}`;
 
 export default function SplitBill() {
-  const { uid, myName, toLocalDateKey, transactions, setTransactions, setSyncing, setActiveTab } = useStore();
+  const { uid, workspaceId, toLocalDateKey, transactions, setTransactions, setSyncing, setActiveTab } = useStore();
   const [step, setStep] = useState(0);
   const [friends, setFriends] = useState([]);
   const [friend, setFriend] = useState('');
@@ -37,9 +38,13 @@ export default function SplitBill() {
   const resetSession = () => { setStep(0); setItems([]); setFriends([]); setFriend(''); setItem({ name: '', price: '', people: ['Gue'] }); setPaid(false); setError(''); };
   const exportTransaction = async () => {
     if (!items.length || !myTotal || saving) return;
+    if (!workspaceId) { setError('Workspace belum aktif.'); return; }
     setSaving(true); setSyncing(true); setError('');
-    const transaction = { id: Date.now(), tanggal: toLocalDateKey(), jenis: 'Pengeluaran', kategori: 'Lainnya', deskripsi: `Split bill (${items.length} item)`, nominal: Math.round(myTotal), account: 'QRIS', addedBy: myName || 'Anonymous', source: 'split_bill' };
-    try { await saveTx(uid, transaction); setTransactions([...transactions, transaction]); setPaid(true); } catch (cause) { if (['PERMISSION_DENIED', 'permission-denied', 'INVALID_ARGUMENT', 'invalid-argument'].includes(cause?.code)) setError('Split bill ditolak server. Periksa akses dan data transaksi.'); else { await enqueueTx(uid, transaction); setTransactions([...transactions, transaction]); setPaid(true); } } finally { setSaving(false); setSyncing(false); }
+    const currentUser = auth.currentUser;
+    const addedByUid = currentUser?.uid || uid;
+    const addedByName = currentUser?.displayName || currentUser?.email || 'Tidak diketahui';
+    const transaction = { id: Date.now(), tanggal: toLocalDateKey(), jenis: 'Pengeluaran', kategori: 'Lainnya', deskripsi: `Split bill (${items.length} item)`, nominal: Math.round(myTotal), account: 'QRIS', addedByUid, addedByName, addedBy: addedByName, source: 'split_bill' };
+    try { await saveTx(workspaceId, transaction); setTransactions([...transactions, transaction]); setPaid(true); } catch (cause) { if (['PERMISSION_DENIED', 'permission-denied', 'INVALID_ARGUMENT', 'invalid-argument'].includes(cause?.code)) setError('Split bill ditolak server. Periksa akses dan data transaksi.'); else { await enqueueTx(uid, transaction); setTransactions([...transactions, transaction]); setPaid(true); } } finally { setSaving(false); setSyncing(false); }
   };
 
   return <div className="flex min-w-0 flex-col gap-4">

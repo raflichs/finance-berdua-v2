@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useStore, { calcWallet, toLocalMonthKey } from '../store/useStore';
-import { formatRp, getDashboardData, signedRp, transactionAccount } from '../lib/dashboard';
+import { formatRp, getDashboardData, signedRp, transactionAccount, buildKoreksiTx } from '../lib/dashboard';
+import { saveTx } from '../lib/db';
+import { enqueueTx } from '../lib/offlineQueue';
+import { auth } from '../config/firebase';
+import KoreksiSaldo from './KoreksiSaldo';
 
 const categoryIcons = { Makan: 'restaurant', Transport: 'directions_car', Belanja: 'shopping_cart', Tagihan: 'receipt_long', Nongkrong: 'local_cafe', Hiburan: 'movie', Tabungan: 'savings', 'Pulsa/Kuota': 'phone_android', Gaji: 'payments', Bonus: 'redeem', Lainnya: 'category' };
 const KAT_COLORS = { Makan: '#f59e0b', Transport: '#38bdf8', Belanja: '#a78bfa', Tagihan: '#ef4444', Nongkrong: '#fb923c', Hiburan: '#ec4899', Tabungan: '#34d399', 'Pulsa/Kuota': '#60a5fa', Gaji: '#22c55e', Bonus: '#eab308', Lainnya: '#a78bfa' };
@@ -35,12 +39,15 @@ function Donut({ data, total }) {
 }
 
 function Dashboard() {
-  const { transactions, debts, setActiveTab } = useStore();
+  const { transactions, debts, setActiveTab, setTransactions, workspaceId, myName, uid, toLocalDateKey } = useStore();
   const wallet = useMemo(() => calcWallet(transactions), [transactions]);
   const [selectedMonth, setSelectedMonth] = useState(() => toLocalMonthKey());
   const [hideBalance, setHideBalance] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
+  const [koreksiOpen, setKoreksiOpen] = useState(false);
+  const koreksiTriggerRef = useRef(null);
   const monthRef = useRef(null);
+  const closeKoreksi = useCallback(() => setKoreksiOpen(false), []);
   const data = getDashboardData(transactions, debts, new Date(`${selectedMonth}-01T00:00:00`));
   const topCategories = data.spendingByCategory.slice(0, 4);
   const dueDebts = useMemo(() => dueDebtInfo(debts), [debts]);
@@ -57,6 +64,29 @@ function Dashboard() {
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
   }, [monthOpen]);
+
+  const handleKoreksiSaved = async (target) => {
+    const currentUser = auth.currentUser;
+    const addedByUid = currentUser?.uid || uid;
+    const addedByName = myName || currentUser?.email || 'Tidak diketahui';
+    const tx = buildKoreksiTx({
+      target,
+      currentQRIS: wallet.QRIS,
+      id: Date.now(),
+      tanggal: toLocalDateKey(),
+      addedByUid,
+      addedByName,
+    });
+    if (!tx) return; // selisih === 0, tidak perlu transaksi
+    try {
+      await saveTx(workspaceId, tx);
+      setTransactions([...transactions, tx]);
+    } catch (cause) {
+      if (['PERMISSION_DENIED', 'permission-denied', 'INVALID_ARGUMENT', 'invalid-argument'].includes(cause?.code)) throw cause;
+      await enqueueTx(uid, tx);
+      setTransactions([...transactions, tx]);
+    }
+  };
 
   return (
     <div className="dashboard-layout flex flex-col gap-4" aria-label="Dashboard">
@@ -138,12 +168,21 @@ function Dashboard() {
             <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--success)]" aria-hidden="true" /> MASUK BULAN INI</p>
             <p className="mt-2 truncate text-sm font-bold text-[var(--success)]">{display(data.income)}</p>
           </div>
-          <div className="rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-3">
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--error)]" aria-hidden="true" /> KELUAR BULAN INI</p>
-            <p className="mt-2 truncate text-sm font-bold text-[var(--error)]">{display(data.expense)}</p>
-          </div>
-        </div>
-      </section>
+           <div className="rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-3">
+             <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--error)]" aria-hidden="true" /> KELUAR BULAN INI</p>
+             <p className="mt-2 truncate text-sm font-bold text-[var(--error)]">{display(data.expense)}</p>
+           </div>
+         </div>
+          <button
+            ref={koreksiTriggerRef}
+            type="button"
+            onClick={() => setKoreksiOpen(true)}
+            className="mt-4 min-h-11 w-full rounded-xl bg-[var(--accent)]/20 text-sm font-bold text-[var(--accent-weak)] flex items-center justify-center gap-2"
+          >
+            <span className="material-symbols-outlined text-base" aria-hidden="true">balance</span>
+            Koreksi Saldo
+          </button>
+       </section>
 
       {/* C. Empty state onboarding */}
       {isEmpty && (
@@ -247,11 +286,13 @@ function Dashboard() {
               <p className="text-sm text-[var(--text-secondary)]">Belum ada transaksi. Mulai catat agar ringkasan muncul di sini.</p>
               <button type="button" className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-white" onClick={() => setActiveTab('input')}>Tambah transaksi pertama</button>
             </div>
-          )}
-        </div>
-      </section>
-    </div>
-  );
+           )}
+         </div>
+       </section>
+
+      {koreksiOpen && <KoreksiSaldo key="koreksi" open onClose={closeKoreksi} currentQRIS={wallet.QRIS} onSaved={handleKoreksiSaved} triggerRef={koreksiTriggerRef} />}
+     </div>
+   );
 }
 
 function ShortcutCard({ icon, title, subtitle, tone, onClick }) {

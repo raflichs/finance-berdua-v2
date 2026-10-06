@@ -1,4 +1,7 @@
 import { accountLabel, calcWallet, toLocalMonthKey } from '../store/useStore';
+import { koreksiSelisih, buildKoreksiTx } from './koreksiSaldoHelpers';
+
+export { koreksiSelisih, buildKoreksiTx };
 
 const dateValue = (tx) => String(tx.tanggal || '');
 

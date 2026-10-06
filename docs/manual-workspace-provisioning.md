@@ -22,7 +22,7 @@ Di [Firebase Console](https://console.firebase.google.com/):
 4. **Pemilik (Akun 1)**:
    - Email: `pemilik@example.com` (ganti sesuai preferensi)
    - Password: `TempPassword123!` (user akan reset via email)
-   - Display Name: `Nama Pemilik` (opsional, bisa diisi profil nanti)
+   - Display Name: `Nama Pemilik` (wajib diisi agar header tidak jatuh ke email/Akun)
 5. Catat **UID pemilik**, misalnya: `uid_pemilik_abc123`
 
 6. Ulangi untuk **Pasangan (Akun 2)**:

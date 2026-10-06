@@ -8,7 +8,7 @@ const categories = { Pemasukan: ['Gaji', 'Bonus', 'Lainnya'], Pengeluaran: ['Mak
 const icons = { Makan: 'restaurant', Transport: 'directions_car', Belanja: 'shopping_cart', Tagihan: 'receipt_long', Nongkrong: 'local_cafe', Hiburan: 'movie', Tabungan: 'savings', 'Pulsa/Kuota': 'phone_android', Gaji: 'payments', Bonus: 'redeem', Lainnya: 'category' };
 
 export default function InputTransaction() {
-  const { uid, workspaceId, parseMoney, toLocalDateKey, transactions, setTransactions, setActiveTab, setSyncing } = useStore();
+  const { uid, workspaceId, myName, parseMoney, toLocalDateKey, transactions, setTransactions, setActiveTab, setSyncing } = useStore();
   const wallet = useMemo(() => calcWallet(transactions), [transactions]);
   const moveTab = (event, values, setValue) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -66,7 +66,7 @@ export default function InputTransaction() {
     setSaving(true); setError(''); setSyncing(true);
     const currentUser = auth.currentUser;
     const addedByUid = currentUser?.uid || uid;
-    const addedByName = currentUser?.displayName || currentUser?.email || 'Tidak diketahui';
+    const addedByName = myName || currentUser?.email || 'Tidak diketahui';
     try {
       const base = { tanggal, nominal: amount, addedByUid, addedByName, addedBy: addedByName };
       if (mode === 'cash') {

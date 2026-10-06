@@ -1,4 +1,7 @@
 import { db, ref, get, set, update } from '../config/firebase';
+import { memberName, partnerUid } from './memberNames';
+
+export { memberName, partnerUid };
 
 const workspacePath = (workspaceId, path = '') => `finance_berdua_v2/workspaces/${workspaceId}${path ? `/${path}` : ''}`;
 const membershipPath = (uid, workspaceId = '') => `finance_berdua_v2/memberships/${uid}${workspaceId ? `/${workspaceId}` : ''}`;

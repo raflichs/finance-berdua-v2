@@ -11,7 +11,7 @@ const monthLabel = (key) => new Intl.DateTimeFormat('id-ID', { month: 'long', ye
 const recentMonths = () => Array.from({ length: 6 }, (_, index) => { const date = new Date(); date.setDate(1); date.setMonth(date.getMonth() - index); return toLocalMonthKey(date); });
 
 export default function History() {
-  const { uid, workspaceId, transactions, setTransactions, setSyncing, setActiveTab } = useStore();
+  const { uid, workspaceId, myName, partnerName, transactions, setTransactions, setSyncing, setActiveTab } = useStore();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('Semua');
   const [accountFilter, setAccountFilter] = useState('Semua');
@@ -208,7 +208,7 @@ export default function History() {
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-semibold">{tx.deskripsi || tx.kategori}</div>
                     <div className="truncate text-[11px] text-[var(--text-secondary)]">{tx.tanggal || '-'} · {transactionAccount(tx)}{cashMove && ' · Transfer Cash'}</div>
-                    <div className="truncate text-[10px] text-[var(--accent-weak)]">{mine ? 'Gue' : tx.addedByName || 'Tidak diketahui'}</div>
+                    <div className="truncate text-[10px] text-[var(--accent-weak)]">{mine ? (myName || 'Gue') : (tx.addedByName || partnerName || 'Tidak diketahui')}</div>
                   </div>
                   <div className="flex max-w-[44%] shrink-0 flex-col items-end gap-1">
                     <div className={`truncate text-[13px] font-bold ${tx.jenis === 'Pemasukan' ? 'text-[var(--success)]' : cashMove ? 'text-[var(--info)]' : 'text-[var(--error)]'}`}>{cashMove ? 'Transfer Cash' : `${tx.jenis === 'Pemasukan' ? '+' : '-'}${formatRp(tx.nominal)}`}</div>

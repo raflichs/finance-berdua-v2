@@ -7,7 +7,7 @@ const errorMessage = (error) => ({
   'auth/too-many-requests': 'Terlalu banyak percobaan. Coba lagi nanti.',
 }[error.code] || 'Operasi gagal. Periksa koneksi.');
 
-export default function AccountPanel({ user, pendingCount = 0 }) {
+export default function AccountPanel({ user, name = '', pendingCount = 0 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
@@ -88,7 +88,7 @@ export default function AccountPanel({ user, pendingCount = 0 }) {
   return (
     <>
       <button ref={triggerRef} type="button" className="min-h-11 rounded-full border border-[var(--border-1)] bg-[var(--bg-surface-1)] px-3 text-xs font-semibold text-[var(--text-secondary)]" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-haspopup="dialog" aria-controls="account-panel">
-        {user?.displayName || 'Akun'}
+        {name || user?.email || 'Akun'}
       </button>
       {open && createPortal(
         <>

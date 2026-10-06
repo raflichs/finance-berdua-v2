@@ -39,7 +39,9 @@ const useStore = create((set) => ({
   // Auth
   uid: null,
   myName: '',
+  partnerName: '',
   setAuth: (uid, myName) => set({ uid, myName }),
+  setPartnerName: (partnerName) => set({ partnerName }),
 
   // Workspace
   workspaceId: null,
@@ -49,7 +51,7 @@ const useStore = create((set) => ({
   setWorkspace: (workspaceId, workspace = null) => set({ workspaceId, workspace, workspaceError: '' }),
   setWorkspaceLoading: (loading) => set({ workspaceLoading: loading }),
   setWorkspaceError: (error) => set({ workspaceError: error }),
-  clearWorkspace: () => set({ workspaceId: null, workspace: null, workspaceError: '', workspaceLoading: false }),
+  clearWorkspace: () => set({ workspaceId: null, workspace: null, workspaceError: '', workspaceLoading: false, partnerName: '' }),
 
   // Transactions
   transactions: [],

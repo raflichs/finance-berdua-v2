@@ -39,5 +39,6 @@ export const getDashboardData = (transactions, debts, now = new Date()) => {
 };
 
 export const formatRp = (value) => `Rp ${Math.abs(Math.round(Number(value) || 0)).toLocaleString('id-ID')}`;
+export { formatThousands } from './formatInput';
 export const signedRp = (tx) => `${tx.jenis === 'Pemasukan' ? '+' : '-'}${formatRp(tx.nominal)}`;
 export const transactionAccount = (tx) => tx.jenis === 'CashMove' ? `${accountLabel(tx.fromAccount)} → ${accountLabel(tx.toAccount)}` : accountLabel(tx.account || tx.paymentMethod);

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import useStore, { toLocalMonthKey } from '../store/useStore';
 import { removeTx, saveTx } from '../lib/db';
 import { enqueueRemoveTx, enqueueTx } from '../lib/offlineQueue';
-import { formatRp, transactionAccount } from '../lib/dashboard';
+import { formatRp, transactionAccount, formatThousands } from '../lib/dashboard';
 import { errorMessage } from '../lib/firebaseErrors';
 
 const PRIMARY_FILTERS = ['Semua', 'Pemasukan', 'Pengeluaran'];
@@ -12,7 +12,7 @@ const monthLabel = (key) => new Intl.DateTimeFormat('id-ID', { month: 'long', ye
 const recentMonths = () => Array.from({ length: 6 }, (_, index) => { const date = new Date(); date.setDate(1); date.setMonth(date.getMonth() - index); return toLocalMonthKey(date); });
 
 export default function History() {
-  const { uid, workspaceId, myName, partnerName, transactions, setTransactions, setSyncing, setActiveTab } = useStore();
+  const { uid, workspaceId, myName, partnerName, parseMoney, transactions, setTransactions, setSyncing, setActiveTab } = useStore();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('Semua');
   const [accountFilter, setAccountFilter] = useState('Semua');
@@ -75,7 +75,7 @@ export default function History() {
   };
   const saveEdit = (event) => {
     event.preventDefault();
-    const tx = { ...editing, nominal: Number(editing.nominal), deskripsi: editing.deskripsi.trim() || '-' };
+    const tx = { ...editing, nominal: parseMoney(editing.nominal), deskripsi: editing.deskripsi.trim() || '-' };
     if (!tx.nominal || tx.nominal < 1000 || !tx.tanggal) { setError('Nominal minimal Rp 1.000 dan tanggal wajib diisi.'); return; }
     mutate(async () => {
       setTransactions(transactions.map((current) => current.id === tx.id ? tx : current));
@@ -234,7 +234,7 @@ export default function History() {
             <label className="mt-4 block text-xs text-[var(--text-secondary)]" htmlFor="edit-description">Deskripsi</label>
             <input id="edit-description" className="mt-1 min-h-11 w-full rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] px-3 text-base text-[var(--text-primary)]" value={editing.deskripsi} onChange={(event) => setEditing({ ...editing, deskripsi: event.target.value })} />
             <label className="mt-3 block text-xs text-[var(--text-secondary)]" htmlFor="edit-amount">Nominal</label>
-            <input id="edit-amount" required min="1000" type="number" className="mt-1 min-h-11 w-full rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] px-3 text-base text-[var(--text-primary)]" value={editing.nominal} onChange={(event) => setEditing({ ...editing, nominal: event.target.value })} />
+            <input id="edit-amount" required inputMode="numeric" className="mt-1 min-h-11 w-full rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] px-3 text-base text-[var(--text-primary)]" value={formatThousands(editing.nominal)} onChange={(event) => setEditing({ ...editing, nominal: event.target.value })} />
             <label className="mt-3 block text-xs text-[var(--text-secondary)]" htmlFor="edit-date">Tanggal</label>
             <input id="edit-date" required type="date" className="mt-1 min-h-11 w-full rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] px-3 text-base text-[var(--text-primary)]" value={editing.tanggal} onChange={(event) => setEditing({ ...editing, tanggal: event.target.value })} />
             {error && <p className="mt-3 text-xs text-[var(--error-weak)]" role="alert">{error}</p>}

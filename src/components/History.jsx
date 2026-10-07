@@ -3,6 +3,7 @@ import useStore, { toLocalMonthKey } from '../store/useStore';
 import { removeTx, saveTx } from '../lib/db';
 import { enqueueRemoveTx, enqueueTx } from '../lib/offlineQueue';
 import { formatRp, transactionAccount } from '../lib/dashboard';
+import { errorMessage } from '../lib/firebaseErrors';
 
 const PRIMARY_FILTERS = ['Semua', 'Pemasukan', 'Pengeluaran'];
 const ACCOUNT_FILTERS = ['Semua', 'QRIS', 'Cash', 'Transfer Cash'];
@@ -62,7 +63,7 @@ export default function History() {
   const grouped = useMemo(() => Object.entries(filtered.reduce((result, tx) => { const key = String(tx.tanggal || '').slice(0, 7) || 'Tanpa tanggal'; (result[key] ||= []).push(tx); return result; }, {})), [filtered]);
   const totals = useMemo(() => filtered.reduce((result, tx) => { if (tx.jenis === 'Pemasukan') result.income += Number(tx.nominal || 0); if (tx.jenis === 'Pengeluaran') result.expense += Number(tx.nominal || 0); return result; }, { income: 0, expense: 0 }), [filtered]);
 
-  const mutate = async (operation) => { setError(''); setSyncing(true); try { await operation(); } catch { setError('Perubahan gagal disimpan. Coba lagi saat online.'); } finally { setSyncing(false); } };
+  const mutate = async (operation) => { setError(''); setSyncing(true); try { await operation(); } catch (err) { setError(errorMessage(err)); } finally { setSyncing(false); } };
   const isServerError = (cause) => ['PERMISSION_DENIED', 'permission-denied', 'INVALID_ARGUMENT', 'invalid-argument'].includes(cause?.code);
   const deleteTransaction = (tx) => {
     if (!window.confirm(`Hapus transaksi "${tx.deskripsi}"?`)) return;
@@ -227,8 +228,8 @@ export default function History() {
       ))}
 
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--overlay-strong)] p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="edit-title" onClick={() => { setEditing(null); setError(''); }}>
-          <form onClick={(e) => e.stopPropagation()} className="max-h-[calc(100dvh-32px)] w-full max-w-[480px] overflow-y-auto rounded-t-[var(--radius-modal)] border border-[var(--border-1)] bg-[var(--bg-modal)] p-5 sm:rounded-[var(--radius-modal)]" onSubmit={saveEdit}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-strong)] p-4" role="dialog" aria-modal="true" aria-labelledby="edit-title" onClick={() => { setEditing(null); setError(''); }}>
+          <form onClick={(e) => e.stopPropagation()} className="max-h-[calc(100dvh-32px)] w-full max-w-[480px] overflow-y-auto rounded-[var(--radius-modal)] border border-[var(--border-1)] bg-[var(--bg-modal)] p-5" onSubmit={saveEdit}>
             <h2 id="edit-title" className="text-lg font-bold">Edit transaksi</h2>
             <label className="mt-4 block text-xs text-[var(--text-secondary)]" htmlFor="edit-description">Deskripsi</label>
             <input id="edit-description" className="mt-1 min-h-11 w-full rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] px-3 text-base text-[var(--text-primary)]" value={editing.deskripsi} onChange={(event) => setEditing({ ...editing, deskripsi: event.target.value })} />

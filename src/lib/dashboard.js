@@ -1,22 +1,19 @@
 import { accountLabel, calcWallet, toLocalMonthKey } from '../store/useStore';
 import { koreksiSelisih, buildKoreksiTx } from './koreksiSaldoHelpers';
+import { nextDue } from './debtHelpers';
 
 export { koreksiSelisih, buildKoreksiTx };
 
 const dateValue = (tx) => String(tx.tanggal || '');
 
-export const getDueSoonDebts = (debts, now = new Date()) => {
+export const getDueSoonDebts = (debts, now = new Date()) => debts.map((debt) => {
+  const nd = nextDue(debt, now);
+  if (!nd) return null;
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return debts.filter((debt) => {
-    const due = new Date(`${debt.jatuhTempo}T00:00:00`);
-    const remaining = Number(debt.total || 0) - Number(debt.paid || 0);
-    const days = Math.ceil((due - today) / 86400000);
-    return debt.jatuhTempo && remaining > 0 && days >= 0 && days <= 7;
-  }).map((debt) => ({
-    ...debt,
-    days: Math.ceil((new Date(`${debt.jatuhTempo}T00:00:00`) - today) / 86400000),
-  }));
-};
+  const days = Math.ceil((new Date(`${nd.tanggal}T00:00:00`) - today) / 86400000);
+  const remaining = Number(debt.total || 0) - Number(debt.paid || 0);
+  return remaining > 0 && days <= 7 ? { ...debt, days, remaining, duePeriode: nd.periode, dueTanggal: nd.tanggal } : null;
+}).filter(Boolean).sort((a, b) => a.days - b.days);
 
 export const getDashboardData = (transactions, debts, now = new Date()) => {
   const month = toLocalMonthKey(now);

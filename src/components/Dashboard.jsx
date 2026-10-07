@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useStore, { calcWallet, toLocalMonthKey } from '../store/useStore';
-import { formatRp, getDashboardData, signedRp, transactionAccount, buildKoreksiTx } from '../lib/dashboard';
+import { formatRp, getDashboardData, signedRp, transactionAccount, buildKoreksiTx, getDueSoonDebts } from '../lib/dashboard';
 import { saveTx } from '../lib/db';
 import { enqueueTx } from '../lib/offlineQueue';
 import { auth } from '../config/firebase';
@@ -10,11 +10,6 @@ const categoryIcons = { Makan: 'restaurant', Transport: 'directions_car', Belanj
 const KAT_COLORS = { Makan: '#f59e0b', Transport: '#38bdf8', Belanja: '#a78bfa', Tagihan: '#ef4444', Nongkrong: '#fb923c', Hiburan: '#ec4899', Tabungan: '#34d399', 'Pulsa/Kuota': '#60a5fa', Gaji: '#22c55e', Bonus: '#eab308', Lainnya: '#a78bfa' };
 const monthName = (key) => new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(`${key}-01T00:00:00`));
 const monthOptions = () => Array.from({ length: 6 }, (_, index) => { const date = new Date(); date.setDate(1); date.setMonth(date.getMonth() - index); return toLocalMonthKey(date); });
-const dueDebtInfo = (debts) => debts.map((debt) => {
-  const due = new Date(`${debt.jatuhTempo}T00:00:00`);
-  const days = Math.ceil((due - new Date(new Date().setHours(0, 0, 0, 0))) / 86400000);
-  return { ...debt, days, remaining: Number(debt.total || 0) - Number(debt.paid || 0) };
-}).filter((debt) => debt.jatuhTempo && debt.remaining > 0 && debt.days <= 7).sort((a, b) => a.days - b.days);
 
 function Donut({ data, total }) {
   const sliced = data.slice(0, 4);
@@ -50,7 +45,7 @@ function Dashboard() {
   const closeKoreksi = useCallback(() => setKoreksiOpen(false), []);
   const data = getDashboardData(transactions, debts, new Date(`${selectedMonth}-01T00:00:00`));
   const topCategories = data.spendingByCategory.slice(0, 4);
-  const dueDebts = useMemo(() => dueDebtInfo(debts), [debts]);
+  const dueDebts = useMemo(() => getDueSoonDebts(debts), [debts]);
   const options = useMemo(() => monthOptions(), []);
   const display = (value) => hideBalance ? '••••••' : formatRp(value);
   const monthLabel = monthName(selectedMonth);
@@ -206,7 +201,7 @@ function Dashboard() {
               <li key={debt.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{debt.name}</p>
-                  <p className="truncate text-xs text-[var(--text-secondary)]">{debt.days < 0 ? `Terlambat ${Math.abs(debt.days)} hari` : debt.days === 0 ? 'Jatuh tempo hari ini' : `${debt.days} hari lagi`} · sisa {formatRp(debt.remaining)}</p>
+                  <p className="truncate text-xs text-[var(--text-secondary)]">{debt.duePeriode ? `Cicilan ${debt.duePeriode} · ` : ''}{debt.days < 0 ? `Terlambat ${Math.abs(debt.days)} hari` : debt.days === 0 ? 'Jatuh tempo hari ini' : `${debt.days} hari lagi`} · sisa {formatRp(debt.remaining)}</p>
                 </div>
                 <button type="button" className="pill-control shrink-0" onClick={() => setActiveTab('debt')}>Lihat hutang</button>
               </li>

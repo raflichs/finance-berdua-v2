@@ -5,7 +5,7 @@ import { enqueueDebt, enqueueOperation, enqueueRemoveDebt } from '../lib/offline
 import { isTransientError, errorMessage } from '../lib/firebaseErrors';
 import { formatRp, formatThousands } from '../lib/dashboard';
 import { auth } from '../config/firebase';
-import { addTenor, fmtDueDate } from '../lib/debtHelpers';
+import { addTenor, fmtDueDate, generateSchedule, nextDue, countPaid } from '../lib/debtHelpers';
 
 const money = (value) => Number(String(value).replace(/\D/g, '')) || 0;
 const text = (value, limit) => String(value || '').trim().slice(0, limit);
@@ -22,7 +22,6 @@ const newId = () => {
   lastId = Math.max(now, lastId + 1);
   return lastId;
 };
-const categories = ['Makanan', 'Sosial', 'Tagihan', 'Transportasi', 'Lainnya'];
 const inputClass = 'min-h-11 w-full rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] px-3 text-base text-[var(--text-primary)]';
 
 export default function Debt() {
@@ -30,8 +29,20 @@ export default function Debt() {
   const [selectedId, setSelectedId] = useState(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [open, setOpenState] = useState(false);
-  const [form, setForm] = useState({ type: 'Hutang', name: '', total: '', tenor: '', unit: '', kategori: '', keterangan: '' });
-  const [payment, setPayment] = useState({ nominal: '', tanggal: toLocalDateKey(), catatan: '' });
+  const [form, setForm] = useState({ 
+    type: 'Hutang', 
+    name: '', 
+    total: '', 
+    tenor: '', 
+    unit: '', 
+    kategori: '', 
+    keterangan: '',
+    isCicilan: true,
+    nominalPerCicilan: '',
+    tanggalMulai: toLocalDateKey(),
+    tanggalJatuhTempoPeriode: '1'
+  });
+  const [payment, setPayment] = useState({ nominal: '', tanggal: toLocalDateKey(), catatan: '', periode: '' });
   const [error, setError] = useState('');
   const setOpen = (value) => { if (value) setError(''); setOpenState(value); };
   useEffect(() => {
@@ -43,15 +54,355 @@ export default function Debt() {
   }, [open, paymentOpen]);
   const selected = debts.find((debt) => debt.id === selectedId);
   const total = (type) => debts.filter((debt) => debt.type === type).reduce((sum, debt) => sum + Math.max(0, Number(debt.total || 0) - Number(debt.paid || 0)), 0);
-   const mutate = async (operation) => { setSyncing(true); setError(''); try { await operation(); } catch (err) { setError(errorMessage(err)); } finally { setSyncing(false); } };
-  const submit = async (event) => { event.preventDefault(); const amount = money(form.total); const name = text(form.name, 100); if (!name) { setError('Nama wajib diisi.'); return; } if (amount < 1000) { setError('Nominal minimal Rp 1.000.'); return; } if (!form.tenor || !form.unit) { setError('Tenor dan unit wajib diisi.'); return; } if (!workspaceId) { setError('Workspace belum aktif.'); return; } const currentUser = auth.currentUser; const createdByUid = currentUser?.uid || uid; const createdByName = myName || currentUser?.email || 'Tidak diketahui'; const jatuhTempo = addTenor(toLocalDateKey(), form.tenor, form.unit); if (!jatuhTempo) { setError('Tenor tidak valid. Masukkan angka bulat dan pilih unit.'); return; } if (!Number.isInteger(Number(form.tenor))) { setError('Tenor harus angka bulat.'); return; } await mutate(async () => { const debt = { id: newId(), name, type: form.type, total: amount, paid: 0, keterangan: text(form.keterangan, 200) || text(form.kategori, 50) || '-', cicilan: {}, createdByUid, createdByName }; if (jatuhTempo) debt.jatuhTempo = jatuhTempo; setDebts([...debts, debt]); try { await saveDebt(workspaceId, debt); } catch (err) { if (isTransientError(err)) { await enqueueDebt(uid, debt); } else { throw err; } } setForm({ type: 'Hutang', name: '', total: '', tenor: '', unit: '', kategori: '', keterangan: '' }); setOpen(false); }); };
-   const savePayment = async (event) => { event.preventDefault(); if (!selected) return; if (!workspaceId) { setError('Workspace belum aktif.'); return; } const amount = money(payment.nominal); const remaining = Math.max(0, Number(selected.total) - Number(selected.paid)); if (!remaining) { setError('Hutang ini sudah lunas.'); return; } if (amount < 1000 || amount > remaining) { setError(`Pembayaran harus antara Rp 1.000 dan ${formatRp(remaining)}.`); return; } if (!isDate(payment.tanggal)) { setError('Tanggal pembayaran tidak valid.'); return; } const cicilanId = newId(); const txId = newId(); const currentUser = auth.currentUser; const addedByUid = currentUser?.uid || uid; const addedByName = myName || currentUser?.email || 'Tidak diketahui'; const updated = { ...selected, paid: Number(selected.paid || 0) + amount, cicilan: Array.isArray(selected.cicilan) ? [...selected.cicilan, { id: cicilanId, nominal: amount, tanggal: payment.tanggal, catatan: text(payment.catatan, 200), txId }] : [{ id: cicilanId, nominal: amount, tanggal: payment.tanggal, catatan: text(payment.catatan, 200), txId }] }; const transaction = { id: txId, tanggal: payment.tanggal, jenis: selected.type === 'Hutang' ? 'Pengeluaran' : 'Pemasukan', kategori: selected.type === 'Hutang' ? 'Tagihan' : 'Lainnya', deskripsi: `${selected.type === 'Hutang' ? 'Bayar hutang' : 'Terima piutang'} - ${text(selected.name, 100)}`, nominal: amount, account: 'QRIS', addedByUid, addedByName, addedBy: addedByName, source: 'debt_payment', debtId: selected.id, cicilanId }; await mutate(async () => { setDebts((current) => current.map((debt) => debt.id === selected.id ? updated : debt)); setTransactions((current) => current.some((item) => item.id === txId) ? current : [...current, transaction]); try { await saveDebtPayment(workspaceId, updated, transaction); } catch (err) { if (isTransientError(err)) { await enqueueOperation(uid, `debt:${selected.id}:${cicilanId}`, { type: 'debtPayment', debtId: selected.id, debt: updated, transaction, dependsOn: [`debt:${selected.id}`] }); } else { throw err; } } setPaymentOpen(false); setPayment({ nominal: '', tanggal: toLocalDateKey(), catatan: '' }); }); };
-   const remove = (debt) => { if (window.confirm(`Hapus ${debt.name}?`)) if (!workspaceId) { setError('Workspace belum aktif.'); return; } mutate(async () => { setDebts(debts.filter((item) => item.id !== debt.id)); try { await removeDebt(workspaceId, debt.id); } catch (err) { if (isTransientError(err)) { await enqueueRemoveDebt(uid, debt.id); } else { throw err; } } setSelectedId(null); }); };
-  if (selected) return <Detail debt={selected} payment={payment} setPayment={setPayment} paymentOpen={paymentOpen} setPaymentOpen={setPaymentOpen} error={error} savePayment={savePayment} onBack={() => { setSelectedId(null); setPaymentOpen(false); setError(''); }} onDelete={() => remove(selected)} />;
+  const mutate = async (operation) => { setSyncing(true); setError(''); try { await operation(); } catch (err) { setError(errorMessage(err)); } finally { setSyncing(false); } };
+  
+  const submit = async (event) => { 
+    event.preventDefault(); 
+    const amount = money(form.total); 
+    const name = text(form.name, 100); 
+    if (!name) { setError('Nama wajib diisi.'); return; } 
+    if (amount < 1000) { setError('Nominal minimal Rp 1.000.'); return; }
+    if (!form.tenor || !form.unit) { setError('Tenor dan unit wajib diisi.'); return; }
+    if (!workspaceId) { setError('Workspace belum aktif.'); return; }
+    const currentUser = auth.currentUser; 
+    const createdByUid = currentUser?.uid || uid; 
+    const createdByName = myName || currentUser?.email || 'Tidak diketahui';
+    
+    let jatuhTempo = '';
+    let debtData = { id: newId(), name, type: form.type, total: amount, paid: 0, keterangan: text(form.keterangan, 200) || text(form.kategori, 50) || '-', cicilan: {}, createdByUid, createdByName };
+    
+    if (form.isCicilan) {
+      const nominalPerCicilan = money(form.nominalPerCicilan);
+      if (!form.tanggalMulai || !isDate(form.tanggalMulai)) { setError('Tanggal mulai tidak valid.'); return; }
+      if (!Number.isInteger(Number(form.tenor)) || Number(form.tenor) <= 0) { setError('Tenor harus angka bulat > 0.'); return; }
+      if (nominalPerCicilan < 1000) { setError('Nominal per cicilan minimal Rp 1.000.'); return; }
+      if (form.unit === 'bulan') {
+        const tgl = Number(form.tanggalJatuhTempoPeriode);
+        if (!Number.isInteger(tgl) || tgl < 1 || tgl > 28) { setError('Tanggal jatuh tempo per periode harus 1-28.'); return; }
+      }
+      const lastPeriodeTanggal = form.unit === 'hari' 
+        ? addTenor(form.tanggalMulai, Number(form.tenor) - 1, 'hari')
+        : form.unit === 'minggu'
+          ? addTenor(form.tanggalMulai, (Number(form.tenor) - 1) * 7, 'hari')
+          : addTenor(form.tanggalMulai, Number(form.tenor) - 1, 'bulan');
+      if (!lastPeriodeTanggal) { setError('Tanggal jatuh tempo tidak valid.'); return; }
+      jatuhTempo = lastPeriodeTanggal;
+      
+      debtData = {
+        ...debtData,
+        tenor: Number(form.tenor),
+        unit: form.unit,
+        nominalPerCicilan,
+        tanggalMulai: form.tanggalMulai,
+        tanggalJatuhTempoPeriode: form.unit === 'bulan' ? Number(form.tanggalJatuhTempoPeriode) : undefined
+      };
+    } else {
+      jatuhTempo = addTenor(toLocalDateKey(), form.tenor, form.unit);
+      if (!jatuhTempo) { setError('Tenor tidak valid. Masukkan angka bulat dan pilih unit.'); return; }
+      if (!Number.isInteger(Number(form.tenor))) { setError('Tenor harus angka bulat.'); return; }
+    }
+    
+    if (jatuhTempo) debtData.jatuhTempo = jatuhTempo;
+    
+    await mutate(async () => { 
+      setDebts([...debts, debtData]); 
+      try { await saveDebt(workspaceId, debtData); } 
+      catch (err) { if (isTransientError(err)) { await enqueueDebt(uid, debtData); } else { throw err; } } 
+      setForm({ 
+        type: 'Hutang', 
+        name: '', 
+        total: '', 
+        tenor: '', 
+        unit: '', 
+        kategori: '', 
+        keterangan: '',
+        isCicilan: true,
+        nominalPerCicilan: '',
+        tanggalMulai: toLocalDateKey(),
+        tanggalJatuhTempoPeriode: '1'
+      }); 
+      setOpen(false); 
+    }); 
+  };
+  
+  const savePayment = async (event) => { 
+    event.preventDefault(); 
+    if (!selected) return; 
+    if (!workspaceId) { setError('Workspace belum aktif.'); return; }
+    const amount = money(payment.nominal); 
+    const remaining = Math.max(0, Number(selected.total) - Number(selected.paid));
+    if (!remaining) { setError('Hutang ini sudah lunas.'); return; }
+    if (amount < 1000 || amount > remaining) { setError(`Pembayaran harus antara Rp 1.000 dan ${formatRp(remaining)}.`); return; }
+    if (!isDate(payment.tanggal)) { setError('Tanggal pembayaran tidak valid.'); return; }
+    
+    const cicilanId = newId(); 
+    const txId = newId(); 
+    const currentUser = auth.currentUser; 
+    const addedByUid = currentUser?.uid || uid; 
+    const addedByName = myName || currentUser?.email || 'Tidak diketahui';
+    
+    const isCicilan = !!selected.tenor;
+    const periode = payment.periode ? Number(payment.periode) : null;
+    
+    if (isCicilan && !periode) {
+      setError('Pilih periode cicilan yang akan dibayar.');
+      return;
+    }
+    
+    const newCicilan = { 
+      id: cicilanId, 
+      nominal: amount, 
+      tanggal: payment.tanggal, 
+      catatan: text(payment.catatan, 200), 
+      txId 
+    };
+    if (periode) newCicilan.periode = periode;
+    
+    const updated = { 
+      ...selected, 
+      paid: Number(selected.paid || 0) + amount, 
+      cicilan: Array.isArray(selected.cicilan) ? [...selected.cicilan, newCicilan] : [newCicilan] 
+    };
+    
+    const transaction = { 
+      id: txId, 
+      tanggal: payment.tanggal, 
+      jenis: selected.type === 'Hutang' ? 'Pengeluaran' : 'Pemasukan', 
+      kategori: selected.type === 'Hutang' ? 'Tagihan' : 'Lainnya', 
+      deskripsi: `${selected.type === 'Hutang' ? 'Bayar hutang' : 'Terima piutang'} - ${text(selected.name, 100)}${periode ? ` (Cicilan ${periode})` : ''}`, 
+      nominal: amount, 
+      account: 'QRIS', 
+      addedByUid, 
+      addedByName, 
+      addedBy: addedByName, 
+      source: 'debt_payment', 
+      debtId: selected.id, 
+      cicilanId 
+    };
+    
+    await mutate(async () => { 
+      setDebts((current) => current.map((debt) => debt.id === selected.id ? updated : debt)); 
+      setTransactions((current) => current.some((item) => item.id === txId) ? current : [...current, transaction]); 
+      try { await saveDebtPayment(workspaceId, updated, transaction); } 
+      catch (err) { 
+        if (isTransientError(err)) { 
+          await enqueueOperation(uid, `debt:${selected.id}:${cicilanId}`, { type: 'debtPayment', debtId: selected.id, debt: updated, transaction }); 
+        } else { 
+          throw err; 
+        } 
+      } 
+      setPayment({ nominal: '', tanggal: toLocalDateKey(), catatan: '', periode: '' }); 
+      setPaymentOpen(false); 
+    }); 
+  };
+  
+  const remove = (debt) => { 
+    if (window.confirm(`Hapus ${debt.name}?`)) {
+      if (!workspaceId) { setError('Workspace belum aktif.'); return; }
+      mutate(async () => { 
+        setDebts(debts.filter((item) => item.id !== debt.id)); 
+        try { await removeDebt(workspaceId, debt.id); } 
+        catch (err) { if (isTransientError(err)) { await enqueueRemoveDebt(uid, debt.id); } else { throw err; } } 
+        setSelectedId(null); 
+      }); 
+    }
+  };
+  
+  if (selected) return <Detail debt={selected} payment={payment} setPayment={setPayment} paymentOpen={paymentOpen} setPaymentOpen={setPaymentOpen} error={error} savePayment={savePayment} onBack={() => { setSelectedId(null); setPaymentOpen(false); setError(''); }} onDelete={() => remove(selected)} setForm={setForm} setOpen={setOpen} toLocalDateKey={toLocalDateKey} />;
+  
   return <div className="flex flex-col gap-4"><button type="button" className="self-start text-xs text-[var(--accent-weak)]" onClick={() => setActiveTab('dashboard')}>← Kembali ke Dashboard</button><div className="flex gap-2"><Summary label="Saya berhutang" value={total('Hutang')} tone="error" /><Summary label="Piutang saya" value={total('Piutang')} tone="success" /></div><section aria-labelledby="debt-list-title"><h2 id="debt-list-title" className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">Hutang & Piutang aktif</h2><div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)]">{debts.length === 0 && <div className="p-6 text-center"><span className="material-symbols-outlined text-4xl text-[var(--text-muted)]">handshake</span><p className="mt-2 text-sm font-bold">Belum ada hutang & piutang</p><p className="mx-auto mt-1 max-w-[28ch] text-xs leading-5 text-[var(--text-secondary)]">Catat hutang dan piutang biar tagihan tidak terlewat dan keuangan berdua tetap rapi.</p><button type="button" className="mt-4 min-h-11 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold" onClick={() => setOpen(true)}>Catat hutang pertama</button></div>}{debts.map((debt) => <DebtRow key={debt.id} debt={debt} onOpen={() => setSelectedId(debt.id)} onDelete={() => remove(debt)} />)}</div></section><button type="button" className="min-h-11 rounded-[var(--radius-input)] bg-[var(--accent)] text-sm font-bold" onClick={() => setOpen(true)}>Catat hutang baru</button>{open && <DebtForm form={form} setForm={setForm} submit={submit} error={error} close={() => setOpen(false)} />}</div>;
 }
-function DebtRow({ debt, onOpen, onDelete }) { const remaining = Math.max(0, Number(debt.total) - Number(debt.paid)); const progress = Math.min(100, Number(debt.paid || 0) / Math.max(1, Number(debt.total || 0)) * 100); return <article className="border-b border-[var(--border-1)] p-4 last:border-0"><button type="button" className="flex w-full min-w-0 items-start gap-3 text-left" onClick={onOpen}><span className="material-symbols-outlined flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-muted)] text-[var(--text-secondary)]">{remaining ? 'person' : 'check_circle'}</span><span className="min-w-0 flex-1"><span className="block truncate font-semibold">{debt.name}</span><span className="block truncate text-xs text-[var(--text-secondary)]">{debt.type} · {debt.jatuhTempo ? `Jatuh tempo ${fmtDueDate(debt.jatuhTempo)}` : debt.keterangan}</span><span className="mt-2 block h-2 overflow-hidden rounded-full bg-[var(--surface-track)]"><span className="block h-full rounded-full bg-[var(--success)]" style={{ width: `${progress}%` }} /></span><span className="mt-1 block truncate text-xs text-[var(--text-secondary)]">Dibayar {formatRp(debt.paid)} dari {formatRp(debt.total)}</span></span><span className={`max-w-[42%] shrink-0 break-words text-right text-sm font-bold ${debt.type === 'Hutang' ? 'text-[var(--error)]' : 'text-[var(--success)]'}`}>{remaining ? formatRp(remaining) : 'Lunas'}</span></button><button type="button" aria-label={`Hapus ${debt.name}`} className="mt-2 text-xs text-[var(--error)]" onClick={onDelete}>Hapus</button></article>; }
-function Detail({ debt, payment, setPayment, paymentOpen, setPaymentOpen, error, savePayment, onBack, onDelete }) { const remaining = Math.max(0, Number(debt.total) - Number(debt.paid)); const progress = Math.min(100, Number(debt.paid) / Number(debt.total) * 100); return <div className="flex flex-col gap-4"><button type="button" className="self-start text-xs text-[var(--accent-weak)]" onClick={onBack}>← Kembali ke daftar</button><section className="rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-5"><div className="text-xs text-[var(--text-secondary)]">{debt.type} · {debt.name}</div><div className="mt-2 text-3xl font-bold">{formatRp(debt.total)}</div><div className="mt-3 flex justify-between text-xs"><span>Dibayar {formatRp(debt.paid)}</span><span>Sisa {formatRp(remaining)}</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--surface-track)]"><div className="h-full rounded-full bg-[var(--success)]" style={{ width: `${progress}%` }} /></div><div className="mt-1 text-right text-xs text-[var(--text-secondary)]">{Math.round(progress)}% lunas</div></section><section aria-labelledby="installment-title"><h2 id="installment-title" className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">Riwayat cicilan ({(debt.cicilan || []).length})</h2><div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)]">{!(debt.cicilan || []).length && <p className="p-4 text-xs text-[var(--text-secondary)]">Belum ada cicilan tercatat.</p>}{[...(debt.cicilan || [])].reverse().map((installment) => <div className="flex items-center gap-3 border-b border-[var(--border-1)] p-3 last:border-0" key={installment.id}><span className="material-symbols-outlined text-[var(--success)]">payments</span><div><div className="text-sm font-semibold">{formatRp(installment.nominal)}</div><div className="text-xs text-[var(--text-secondary)]">{installment.tanggal}{installment.catatan ? ` · ${installment.catatan}` : ''}</div></div></div>)}</div></section>{remaining > 0 && !paymentOpen && <button type="button" className="min-h-11 rounded-xl bg-[var(--accent)] text-sm font-bold" onClick={() => setPaymentOpen(true)}>Catat pembayaran</button>}{paymentOpen && <form className="rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-5" onSubmit={savePayment}><h2 className="mb-3 font-bold">Catat Pembayaran</h2><label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-amount">Nominal<input id="payment-amount" required min="1000" className={`${inputClass} mt-1`} inputMode="numeric" value={formatThousands(payment.nominal)} onChange={(event) => setPayment({ ...payment, nominal: event.target.value })} /></label><div className="mb-3 flex flex-wrap gap-2">{[50000, 100000, 200000, 500000, remaining].filter((value, index, values) => value <= remaining && values.indexOf(value) === index).map((value) => <button type="button" className="rounded-full border border-[var(--border-1)] px-3 py-2 text-xs" key={value} onClick={() => setPayment({ ...payment, nominal: String(value) })}>{value === remaining ? 'Lunas' : formatRp(value)}</button>)}</div><label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-date">Tanggal<input id="payment-date" required type="date" className={`${inputClass} mt-1`} value={payment.tanggal} onChange={(event) => setPayment({ ...payment, tanggal: event.target.value })} /></label><label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-note">Catatan<input id="payment-note" className={`${inputClass} mt-1`} value={payment.catatan} onChange={(event) => setPayment({ ...payment, catatan: event.target.value })} /></label>{error && <p className="mb-3 text-xs text-[var(--error-weak)]" role="alert">{error}</p>}<div className="flex gap-2"><button type="button" className="min-h-11 flex-1 rounded-xl border border-[var(--border-1)]" onClick={() => setPaymentOpen(false)}>Batal</button><button type="submit" className="min-h-11 flex-1 rounded-xl bg-[var(--accent)] text-sm font-bold">Simpan Pembayaran</button></div></form>}{remaining === 0 && <p className="rounded-xl bg-[var(--success)]/10 p-3 text-center text-sm font-semibold text-[var(--success)]">Lunas</p>}<button type="button" className="text-xs text-[var(--error)]" onClick={onDelete}>Hapus hutang</button></div>; }
-function DebtForm({ form, setForm, submit, error, close }) { return <form className="rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-5" onSubmit={submit} aria-labelledby="new-debt-title"><div className="mb-4 flex justify-between"><h2 id="new-debt-title" className="font-bold">Catat Hutang Baru</h2><button type="button" className="text-xs text-[var(--text-secondary)]" onClick={close}>Tutup</button></div><div className="mb-3 flex gap-2">{['Hutang', 'Piutang'].map((type) => <button type="button" key={type} className={`min-h-10 flex-1 rounded-full border text-xs font-bold ${form.type === type ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent-weak)]' : 'border-[var(--border-1)] text-[var(--text-secondary)]'}`} onClick={() => setForm({ ...form, type })}>{type}</button>)}</div><Field id="debt-name" label="Nama kontak"><input required id="debt-name" className={inputClass} placeholder="Siapa?" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field><Field id="debt-total" label="Nominal"><input required id="debt-total" className={inputClass} inputMode="numeric" placeholder="Rp 0" value={formatThousands(form.total)} onChange={(event) => setForm({ ...form, total: event.target.value })} /></Field><div className="mb-3 flex gap-2"><Field id="debt-tenor" label="Tenor *" style={{flex:1}}><input id="debt-tenor" className={inputClass} inputMode="numeric" placeholder="Angka" value={form.tenor} onChange={(event) => setForm({ ...form, tenor: event.target.value })} /></Field><Field id="debt-unit" label="Unit" style={{flex:1}}><div className="flex gap-2">{['hari','minggu','bulan'].map((u) => <button type="button" key={u} className={`flex-1 rounded-full border px-3 py-2 text-xs ${form.unit === u ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent-weak)]' : 'border-[var(--border-1)] text-[var(--text-secondary)]'}`} onClick={() => setForm({ ...form, unit: form.unit === u ? '' : u })}>{u}</button>)}</div></Field></div><div className="mb-3 flex flex-wrap gap-2">{categories.map((category) => <button type="button" key={category} className={`rounded-full border px-3 py-2 text-xs ${form.kategori === category ? 'border-[var(--accent)] text-[var(--accent-weak)]' : 'border-[var(--border-1)] text-[var(--text-secondary)]'}`} onClick={() => setForm({ ...form, kategori: category })}>{category}</button>)}</div><Field id="debt-note" label="Catatan"><input id="debt-note" className={inputClass} placeholder="Keterangan..." value={form.keterangan} onChange={(event) => setForm({ ...form, keterangan: event.target.value })} /></Field>{error && <p className="mb-3 text-xs text-[var(--error-weak)]" role="alert">{error}</p>}<button type="submit" className="min-h-11 w-full rounded-xl bg-[var(--accent)] text-sm font-bold">Simpan Hutang Baru</button></form>; }
+
+function DebtRow({ debt, onOpen, onDelete }) { 
+  const remaining = Math.max(0, Number(debt.total) - Number(debt.paid)); 
+  const progress = Math.min(100, Number(debt.paid || 0) / Math.max(1, Number(debt.total || 0)) * 100);
+  
+  let subtitle = '';
+  if (debt.tenor) {
+    const paidCount = countPaid(debt);
+    const nd = nextDue(debt);
+    const dueText = nd ? `jatuh tempo ${fmtDueDate(nd.tanggal)}` : 'lunas';
+    subtitle = `Cicilan ${paidCount}/${debt.tenor} · ${debt.nominalPerCicilan ? formatRp(debt.nominalPerCicilan) + '/' + (debt.unit === 'hari' ? 'hari' : debt.unit === 'minggu' ? 'minggu' : 'bulan') : ''} · ${dueText}`;
+  } else {
+    subtitle = `${debt.type} · ${debt.jatuhTempo ? `Jatuh tempo ${fmtDueDate(debt.jatuhTempo)}` : debt.keterangan}`;
+  }
+  
+  return <article className="border-b border-[var(--border-1)] p-4 last:border-0">
+    <button type="button" className="flex w-full min-w-0 items-start gap-3 text-left" onClick={onOpen}>
+      <span className="material-symbols-outlined flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-muted)] text-[var(--text-secondary)]">{remaining ? 'person' : 'check_circle'}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-semibold">{debt.name}</span>
+        <span className="block truncate text-xs text-[var(--text-secondary)]">{subtitle}</span>
+        <span className="mt-2 block h-2 overflow-hidden rounded-full bg-[var(--surface-track)]"><span className="block h-full rounded-full bg-[var(--success)]" style={{ width: `${progress}%` }} /></span>
+        <span className="mt-1 block truncate text-xs text-[var(--text-secondary)]">Dibayar {formatRp(debt.paid)} dari {formatRp(debt.total)}</span>
+      </span>
+      <span className={`max-w-[42%] shrink-0 break-words text-right text-sm font-bold ${debt.type === 'Hutang' ? 'text-[var(--error)]' : 'text-[var(--success)]'}`}>{remaining ? formatRp(remaining) : 'Lunas'}</span>
+    </button>
+    <button type="button" aria-label={`Hapus ${debt.name}`} className="mt-2 text-xs text-[var(--error)]" onClick={onDelete}>Hapus</button>
+  </article>; 
+}
+
+function Detail({ debt, payment, setPayment, paymentOpen, setPaymentOpen, error, savePayment, onBack, onDelete, setForm, setOpen, toLocalDateKey }) { 
+  const remaining = Math.max(0, Number(debt.total) - Number(debt.paid)); 
+  const progress = Math.min(100, Number(debt.paid) / Number(debt.total) * 100);
+  const isCicilan = !!debt.tenor;
+  const schedule = isCicilan ? generateSchedule(debt) : [];
+  const paidCount = isCicilan ? countPaid(debt) : 0;
+  
+  let quickAmounts = [50000, 100000, 200000, 500000, remaining].filter((value, index, values) => value <= remaining && values.indexOf(value) === index);
+  if (isCicilan && payment.periode) {
+    const s = schedule.find(x => x.periode === Number(payment.periode));
+    const max = s ? Math.max(1000, Math.min(remaining, s.nominal - s.paid)) : remaining;
+    const suggestions = [debt.nominalPerCicilan, remaining].filter(v => v && v <= max && v >= 1000);
+    quickAmounts = [...new Set(suggestions)];
+  }
+  
+  return <div className="flex flex-col gap-4">
+    <button type="button" className="self-start text-xs text-[var(--accent-weak)]" onClick={onBack}>← Kembali ke daftar</button>
+    <section className="rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-5">
+      <div className="text-xs text-[var(--text-secondary)]">{debt.type} · {debt.name}</div>
+      <div className="mt-2 text-3xl font-bold">{formatRp(debt.total)}</div>
+      <div className="mt-3 flex justify-between text-xs"><span>Dibayar {formatRp(debt.paid)}</span><span>Sisa {formatRp(remaining)}</span></div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--surface-track)]"><div className="h-full rounded-full bg-[var(--success)]" style={{ width: `${progress}%` }} /></div>
+      <div className="mt-1 text-right text-xs text-[var(--text-secondary)]">{Math.round(progress)}% lunas</div>
+      {isCicilan && (
+        <div className="mt-3 text-xs text-[var(--text-secondary)]">
+          Cicilan {paidCount}/{debt.tenor} · {formatRp(debt.nominalPerCicilan)}/{debt.unit === 'hari' ? 'hari' : debt.unit === 'minggu' ? 'minggu' : 'bulan'}
+        </div>
+      )}
+      {!isCicilan && (
+        <button type="button" className="mt-3 text-xs text-[var(--accent-weak)] underline" onClick={() => {
+          setForm({ 
+            type: debt.type, 
+            name: debt.name, 
+            total: String(debt.total), 
+            tenor: '', 
+            unit: 'bulan', 
+            kategori: '', 
+            keterangan: debt.keterangan || '',
+            isCicilan: true,
+            nominalPerCicilan: '',
+            tanggalMulai: toLocalDateKey(),
+            tanggalJatuhTempoPeriode: '1'
+          });
+          setOpen(true);
+          onBack();
+        }}>Jadikan cicilan</button>
+      )}
+    </section>
+    
+    <section aria-labelledby="installment-title">
+      <h2 id="installment-title" className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">
+        {isCicilan ? `Jadwal cicilan (${debt.tenor} periode)` : `Riwayat cicilan (${(debt.cicilan || []).length})`}
+      </h2>
+      <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)]">
+        {isCicilan ? (
+          schedule.length === 0 ? (
+            <p className="p-4 text-xs text-[var(--text-secondary)]">Jadwal tidak dapat dibuat.</p>
+          ) : (
+            schedule.map((s) => <div className="flex items-center gap-3 border-b border-[var(--border-1)] p-3 last:border-0" key={s.periode}>
+              <span className="material-symbols-outlined text-[var(--text-secondary)]">{s.status === 'lunas' ? 'check_circle' : s.status === 'sebagian' ? 'remove_circle_outline' : 'radio_button_unchecked'}</span>
+              <div className="flex-1">
+                <div className="flex justify-between text-sm">
+                  <span className="font-semibold">Cicilan {s.periode} · {fmtDueDate(s.tanggalJatuhTempo)}</span>
+                  <span className={`text-xs font-bold ${s.status === 'lunas' ? 'text-[var(--success)]' : s.status === 'sebagian' ? 'text-[var(--warning)]' : 'text-[var(--text-secondary)]'}`}>{s.status}</span>
+                </div>
+                <div className="text-xs text-[var(--text-secondary)]">Target {formatRp(s.nominal)} {s.paid > 0 ? `· Dibayar {formatRp(s.paid)}` : ''}</div>
+              </div>
+            </div>)
+          )
+        ) : (
+          !(debt.cicilan || []).length ? (
+            <p className="p-4 text-xs text-[var(--text-secondary)]">Belum ada cicilan tercatat.</p>
+          ) : (
+            [...(debt.cicilan || [])].reverse().map((installment) => <div className="flex items-center gap-3 border-b border-[var(--border-1)] p-3 last:border-0" key={installment.id}>
+              <span className="material-symbols-outlined text-[var(--success)]">payments</span>
+              <div>
+                <div className="text-sm font-semibold">{formatRp(installment.nominal)}</div>
+                <div className="text-xs text-[var(--text-secondary)]">{installment.tanggal}{installment.catatan ? ` · ${installment.catatan}` : ''}{installment.periode ? ` · Periode ${installment.periode}` : ''}</div>
+              </div>
+            </div>)
+          )
+        )}
+      </div>
+    </section>
+    
+    {remaining > 0 && !paymentOpen && (
+      <button type="button" className="min-h-11 rounded-xl bg-[var(--accent)] text-sm font-bold" onClick={() => { setPayment({ nominal: '', tanggal: toLocalDateKey(), catatan: '', periode: isCicilan ? String(schedule.find(s => s.status !== 'lunas')?.periode || 1) : '' }); setPaymentOpen(true); }}>Catat pembayaran</button>
+    )}
+    
+    {paymentOpen && (
+      <form className="rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-5" onSubmit={savePayment}>
+        <h2 className="mb-3 font-bold">Catat Pembayaran</h2>
+        {isCicilan && (
+          <>
+            <label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-periode">Periode cicilan
+              <select id="payment-periode" required className={`${inputClass} mt-1`} value={payment.periode || ''} onChange={(event) => setPayment({ ...payment, periode: event.target.value })}>
+                <option value="">Pilih periode</option>
+                {schedule.filter(s => s.status !== 'lunas').map(s => <option key={s.periode} value={String(s.periode)}>Cicilan {s.periode} · {fmtDueDate(s.tanggalJatuhTempo)} · {formatRp(s.nominal)}</option>)}
+              </select>
+            </label>
+            <label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-amount">Nominal (default {debt.nominalPerCicilan ? formatRp(debt.nominalPerCicilan) : 'Rp 0'})</label>
+          </>
+        )}
+        {!isCicilan && (
+          <label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-amount">Nominal</label>
+        )}
+        <input id="payment-amount" required min="1000" className={`${inputClass} mt-1`} inputMode="numeric" value={formatThousands(payment.nominal)} onChange={(event) => setPayment({ ...payment, nominal: event.target.value })} />
+        <div className="mb-3 flex flex-wrap gap-2">
+          {quickAmounts.map((value) => <button type="button" className="rounded-full border border-[var(--border-1)] px-3 py-2 text-xs" key={value} onClick={() => setPayment({ ...payment, nominal: String(value) })}>{value === remaining ? 'Lunas' : formatRp(value)}</button>)}
+        </div>
+        <label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-date">Tanggal<input id="payment-date" required type="date" className={`${inputClass} mt-1`} value={payment.tanggal} onChange={(event) => setPayment({ ...payment, tanggal: event.target.value })} /></label>
+        <label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-note">Catatan<input id="payment-note" className={`${inputClass} mt-1`} value={payment.catatan} onChange={(event) => setPayment({ ...payment, catatan: event.target.value })} /></label>
+        {error && <p className="mb-3 text-xs text-[var(--error-weak)]" role="alert">{error}</p>}
+        <div className="flex gap-2"><button type="button" className="min-h-11 flex-1 rounded-xl border border-[var(--border-1)]" onClick={() => { setPaymentOpen(false); setPayment({ nominal: '', tanggal: toLocalDateKey(), catatan: '', periode: '' }); }}>Batal</button><button type="submit" className="min-h-11 flex-1 rounded-xl bg-[var(--accent)] text-sm font-bold">Simpan Pembayaran</button></div>
+      </form>
+    )}
+    {remaining === 0 && <p className="rounded-xl bg-[var(--success)]/10 p-3 text-center text-sm font-semibold text-[var(--success)]">Lunas</p>}
+    <button type="button" className="text-xs text-[var(--error)]" onClick={onDelete}>Hapus hutang</button>
+  </div>; 
+}
+
+function DebtForm({ form, setForm, submit, error, close }) { 
+  return <form className="rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-5" onSubmit={submit} aria-labelledby="new-debt-title">
+    <div className="mb-4 flex justify-between"><h2 id="new-debt-title" className="font-bold">Catat Hutang Baru</h2><button type="button" className="text-xs text-[var(--text-secondary)]" onClick={close}>Tutup</button></div>
+    <div className="mb-3 flex gap-2">{['Hutang', 'Piutang'].map((type) => <button type="button" key={type} className={`min-h-10 flex-1 rounded-full border text-xs font-bold ${form.type === type ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent-weak)]' : 'border-[var(--border-1)] text-[var(--text-secondary)]'}`} onClick={() => setForm({ ...form, type })}>{type}</button>)}</div>
+    
+    <div className="mb-3 flex gap-2">
+      {['Hutang biasa', 'Hutang cicilan'].map((mode) => <button type="button" key={mode} className={`min-h-10 flex-1 rounded-full border text-xs font-bold ${form.isCicilan && mode === 'Hutang cicilan' ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent-weak)]' : !form.isCicilan && mode === 'Hutang biasa' ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent-weak)]' : 'border-[var(--border-1)] text-[var(--text-secondary)]'}`} onClick={() => setForm({ ...form, isCicilan: mode === 'Hutang cicilan' })}>{mode}</button>)}
+    </div>
+    
+    <Field id="debt-name" label="Nama kontak"><input required id="debt-name" className={inputClass} placeholder="Siapa?" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
+    <Field id="debt-total" label="Nominal"><input required id="debt-total" className={inputClass} inputMode="numeric" placeholder="Rp 0" value={formatThousands(form.total)} onChange={(event) => setForm({ ...form, total: event.target.value })} /></Field>
+    
+    <div className="mb-3 flex gap-2">
+      <Field id="debt-tenor" label={form.isCicilan ? 'Tenor *' : 'Tenor *'} style={{flex:1}}>
+        <input id="debt-tenor" className={inputClass} inputMode="numeric" placeholder="Angka" value={form.tenor} onChange={(event) => setForm({ ...form, tenor: event.target.value })} />
+      </Field>
+      <Field id="debt-unit" label="Unit" style={{flex:1}}>
+        <div className="flex gap-2">{['hari','minggu','bulan'].map((u) => <button type="button" key={u} className={`flex-1 rounded-full border px-3 py-2 text-xs ${form.unit === u ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent-weak)]' : 'border-[var(--border-1)] text-[var(--text-secondary)]'}`} onClick={() => setForm({ ...form, unit: form.unit === u ? '' : u })}>{u}</button>)}</div>
+      </Field>
+    </div>
+    
+    {form.isCicilan && (
+      <>
+        <Field id="debt-nominalPerCicilan" label="Nominal per cicilan *">
+          <input required id="debt-nominalPerCicilan" className={inputClass} inputMode="numeric" placeholder="Rp 0" value={formatThousands(form.nominalPerCicilan)} onChange={(event) => setForm({ ...form, nominalPerCicilan: event.target.value })} />
+        </Field>
+        <Field id="debt-tanggalMulai" label="Tanggal mulai *">
+          <input required id="debt-tanggalMulai" type="date" className={inputClass} value={form.tanggalMulai} onChange={(event) => setForm({ ...form, tanggalMulai: event.target.value })} />
+        </Field>
+        {form.unit === 'bulan' && (
+          <Field id="debt-tanggalJatuhTempoPeriode" label="Tgl jatuh tempo per periode (1-28) *">
+            <input required id="debt-tanggalJatuhTempoPeriode" className={inputClass} inputMode="numeric" placeholder="1" value={form.tanggalJatuhTempoPeriode} onChange={(event) => setForm({ ...form, tanggalJatuhTempoPeriode: event.target.value })} />
+          </Field>
+        )}
+      </>
+    )}
+    
+    <Field id="debt-keterangan" label="Keterangan (opsional)"><textarea id="debt-keterangan" className={inputClass} rows={2} placeholder="Catatan tambahan" value={form.keterangan} onChange={(event) => setForm({ ...form, keterangan: event.target.value })} /></Field>
+    <div className="mt-4 flex gap-2"><button type="button" className="flex-1 min-h-11 rounded-xl border border-[var(--border-1)] text-sm font-bold" onClick={close}>Batal</button><button type="submit" className="flex-1 min-h-11 rounded-xl bg-[var(--accent)] text-sm font-bold" disabled={!!error}>Simpan</button></div>{error && <div className="mt-3 text-xs text-[var(--error)]" role="alert">{error}</div>}</form>; 
+}
+
 function Field({ id, label, style, children }) { return <label className="mb-3 block text-xs font-semibold text-[var(--text-secondary)]" style={style} htmlFor={id}>{label}{children}</label>; }
 function Summary({ label, value, tone }) { return <div className="min-w-0 flex-1 rounded-[var(--radius-card)] border border-[var(--border-1)] bg-[var(--bg-surface-1)] p-4"><div className="truncate text-[10px] uppercase text-[var(--text-secondary)]">{label}</div><div className={`truncate text-sm font-bold ${tone === 'error' ? 'text-[var(--error)]' : 'text-[var(--success)]'}`}>{formatRp(value)}</div></div>; }

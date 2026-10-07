@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import useStore from '../store/useStore';
-import { formatRp, koreksiSelisih } from '../lib/dashboard';
+import { formatRp, koreksiSelisih, formatThousands } from '../lib/dashboard';
 
 export default function KoreksiSaldo({ open, onClose, currentQRIS, onSaved, triggerRef }) {
   const { parseMoney } = useStore();
@@ -104,11 +104,11 @@ export default function KoreksiSaldo({ open, onClose, currentQRIS, onSaved, trig
            inputMode="numeric"
            autoFocus
            placeholder="Rp 0"
-           value={saldoMbanking}
-           onChange={(e) => {
-             setSaldoMbanking(e.target.value);
-             setError('');
-           }}
+value={formatThousands(saldoMbanking)}
+            onChange={(e) => {
+              setSaldoMbanking(e.target.value);
+              setError('');
+            }}
            onBlur={() => setTouched(true)}
           aria-invalid={Boolean(touched && validationError)}
           aria-describedby={touched && validationError ? 'saldo-error' : undefined}

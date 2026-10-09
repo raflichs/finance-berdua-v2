@@ -76,7 +76,7 @@ export default function KoreksiSaldo({ open, onClose, currentQRIS, onSaved, trig
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--overlay-strong)] p-4 sm:items-center"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-[var(--overlay-strong)] p-4 sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="koreksi-title"
@@ -86,7 +86,7 @@ export default function KoreksiSaldo({ open, onClose, currentQRIS, onSaved, trig
         ref={panelRef}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
-        className="max-h-[calc(100dvh-32px)] w-full max-w-[480px] overflow-y-auto rounded-t-[var(--radius-modal)] border border-[var(--border-1)] bg-[var(--bg-modal)] p-5 sm:rounded-[var(--radius-modal)]"
+        className="max-h-[calc(100dvh-32px)] w-full max-w-[480px] overflow-y-auto rounded-t-[var(--radius-modal)] border border-[var(--border-1)] bg-[var(--bg-modal)] p-5 pb-[calc(20px+env(safe-area-inset-bottom))] sm:rounded-[var(--radius-modal)] sm:pb-5"
         noValidate
       >
         <h2 id="koreksi-title" className="text-lg font-bold">Koreksi Saldo QRIS</h2>

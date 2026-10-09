@@ -243,6 +243,7 @@ function DebtRow({ debt, onOpen, onDelete }) {
 }
 
 function Detail({ debt, payment, setPayment, paymentOpen, setPaymentOpen, error, savePayment, onBack, onDelete, setForm, setOpen, toLocalDateKey }) { 
+  const [periodeOpen, setPeriodeOpen] = useState(false);
   const remaining = Math.max(0, Number(debt.total) - Number(debt.paid)); 
   const progress = Math.min(100, Number(debt.paid) / Number(debt.total) * 100);
   const isCicilan = !!debt.tenor;
@@ -328,7 +329,7 @@ function Detail({ debt, payment, setPayment, paymentOpen, setPaymentOpen, error,
     </section>
     
     {remaining > 0 && !paymentOpen && (
-      <button type="button" className="min-h-11 rounded-xl bg-[var(--accent)] text-sm font-bold" onClick={() => { setPayment({ nominal: '', tanggal: toLocalDateKey(), catatan: '', periode: isCicilan ? String(schedule.find(s => s.status !== 'lunas')?.periode || 1) : '' }); setPaymentOpen(true); }}>Catat pembayaran</button>
+      <button type="button" className="min-h-11 rounded-xl bg-[var(--accent)] text-sm font-bold" onClick={() => { setPeriodeOpen(false); setPayment({ nominal: '', tanggal: toLocalDateKey(), catatan: '', periode: isCicilan ? String(schedule.find(s => s.status !== 'lunas')?.periode || 1) : '' }); setPaymentOpen(true); }}>Catat pembayaran</button>
     )}
     
     {paymentOpen && (
@@ -336,12 +337,51 @@ function Detail({ debt, payment, setPayment, paymentOpen, setPaymentOpen, error,
         <h2 className="mb-3 font-bold">Catat Pembayaran</h2>
         {isCicilan && (
           <>
-            <label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-periode">Periode cicilan
-              <select id="payment-periode" required className={`${inputClass} mt-1`} value={payment.periode || ''} onChange={(event) => setPayment({ ...payment, periode: event.target.value })}>
-                <option value="">Pilih periode</option>
-                {schedule.filter(s => s.status !== 'lunas').map(s => <option key={s.periode} value={String(s.periode)}>Cicilan {s.periode} · {fmtDueDate(s.tanggalJatuhTempo)} · {formatRp(s.nominal)}</option>)}
-              </select>
-            </label>
+            <div className="mb-3">
+              <span id="payment-periode-label" className="text-xs text-[var(--text-secondary)]">Periode cicilan</span>
+              {(() => {
+                const available = schedule.filter(s => s.status !== 'lunas');
+                if (!available.length) {
+                  return <p className="text-xs text-[var(--text-secondary)] mt-1">Semua cicilan lunas.</p>;
+                }
+                const current = available.find(s => String(s.periode) === payment.periode);
+                return (
+                  <div className="relative mt-1">
+                    <button
+                      type="button"
+                      className={`pill-control w-full !justify-between !min-h-12 !rounded-[var(--radius-input)] !bg-[var(--bg-surface-1)] !px-4 !text-sm !font-semibold ${periodeOpen ? 'pill-control--active !border-[var(--accent)]/45' : ''}`}
+                      aria-haspopup="listbox"
+                      aria-expanded={periodeOpen}
+                      aria-labelledby="payment-periode-label"
+                      onClick={() => setPeriodeOpen(v => !v)}
+                    >
+                      <span className="truncate">{current ? `Cicilan ${current.periode} · ${fmtDueDate(current.tanggalJatuhTempo)}` : 'Pilih periode'}</span>
+                      <span className="material-symbols-outlined text-base shrink-0" aria-hidden="true">{periodeOpen ? 'expand_less' : 'expand_more'}</span>
+                    </button>
+                    {periodeOpen && (
+                      <div role="listbox" aria-label="Pilih periode cicilan" className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[min(280px,50vh)] overflow-auto rounded-2xl border border-[var(--border-1)] bg-[var(--bg-modal)] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
+                        {available.map(s => {
+                          const active = String(s.periode) === payment.periode;
+                          return (
+                            <button
+                              key={s.periode}
+                              type="button"
+                              role="option"
+                              aria-selected={active}
+                              onClick={() => { setPayment({ ...payment, periode: String(s.periode) }); setPeriodeOpen(false); }}
+                              className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-3 text-left text-sm ${active ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-primary)] hover:bg-[var(--bg-surface-1)]'}`}
+                            >
+                              <span className="truncate">Cicilan {s.periode} · {fmtDueDate(s.tanggalJatuhTempo)}</span>
+                              {active && <span className="material-symbols-outlined text-base shrink-0" aria-hidden="true">check</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
             <label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-amount">Nominal (default {debt.nominalPerCicilan ? formatRp(debt.nominalPerCicilan) : 'Rp 0'})</label>
           </>
         )}
@@ -355,7 +395,7 @@ function Detail({ debt, payment, setPayment, paymentOpen, setPaymentOpen, error,
         <label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-date">Tanggal<input id="payment-date" required type="date" className={`${inputClass} mt-1`} value={payment.tanggal} onChange={(event) => setPayment({ ...payment, tanggal: event.target.value })} /></label>
         <label className="mb-3 block text-xs text-[var(--text-secondary)]" htmlFor="payment-note">Catatan<input id="payment-note" className={`${inputClass} mt-1`} value={payment.catatan} onChange={(event) => setPayment({ ...payment, catatan: event.target.value })} /></label>
         {error && <p className="mb-3 text-xs text-[var(--error-weak)]" role="alert">{error}</p>}
-        <div className="flex gap-2"><button type="button" className="min-h-11 flex-1 rounded-xl border border-[var(--border-1)]" onClick={() => { setPaymentOpen(false); setPayment({ nominal: '', tanggal: toLocalDateKey(), catatan: '', periode: '' }); }}>Batal</button><button type="submit" className="min-h-11 flex-1 rounded-xl bg-[var(--accent)] text-sm font-bold">Simpan Pembayaran</button></div>
+        <div className="flex gap-2"><button type="button" className="min-h-11 flex-1 rounded-xl border border-[var(--border-1)]" onClick={() => { setPaymentOpen(false); setPeriodeOpen(false); setPayment({ nominal: '', tanggal: toLocalDateKey(), catatan: '', periode: '' }); }}>Batal</button><button type="submit" className="min-h-11 flex-1 rounded-xl bg-[var(--accent)] text-sm font-bold">Simpan Pembayaran</button></div>
       </form>
     )}
     {remaining === 0 && <p className="rounded-xl bg-[var(--success)]/10 p-3 text-center text-sm font-semibold text-[var(--success)]">Lunas</p>}

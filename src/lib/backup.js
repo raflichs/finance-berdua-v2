@@ -19,10 +19,17 @@ const validateDebt = (debt) => {
   if (payments.reduce((sum, payment) => sum + payment.nominal, 0) !== debt.paid) throw new Error('Jumlah cicilan tidak sama dengan total dibayar.');
 };
 
-export const createBackup = ({ transactions = [], debts = [], weddingSettings = null }) => {
+const validatePocket = (pocket) => {
+  if (!pocket || !isId(pocket.id) || typeof pocket.nama !== 'string' || !pocket.nama.trim()) throw new Error('Kantong tidak valid.');
+  if (pocket.nominal !== undefined && pocket.nominal !== null && !amount(pocket.nominal)) throw new Error('Nominal kantong tidak valid.');
+  if (pocket.jatuhTempo !== undefined && pocket.jatuhTempo !== null && (!Number.isInteger(pocket.jatuhTempo) || pocket.jatuhTempo < 1 || pocket.jatuhTempo > 28)) throw new Error('Jatuh tempo kantong tidak valid.');
+};
+
+export const createBackup = ({ transactions = [], debts = [], weddingSettings = null, pockets = [] }) => {
   transactions.forEach(validateTransaction);
   debts.forEach(validateDebt);
-  const backup = { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: new Date().toISOString(), transactions, debts, weddingSettings };
+  pockets.forEach(validatePocket);
+  const backup = { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: new Date().toISOString(), transactions, debts, weddingSettings, pockets };
   const json = JSON.stringify(backup);
   if (new TextEncoder().encode(json).byteLength > MAX_BACKUP_BYTES) throw new Error('Backup melebihi batas 10MB.');
   return json;
@@ -35,8 +42,10 @@ export const parseBackup = (json) => {
   if (backup.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION || !Array.isArray(backup.transactions) || !Array.isArray(backup.debts)) throw new Error('Format atau versi backup tidak didukung.');
   backup.transactions.forEach(validateTransaction);
   backup.debts.forEach(validateDebt);
+  const pockets = list(backup.pockets);
+  pockets.forEach(validatePocket);
   if (backup.weddingSettings !== null && (typeof backup.weddingSettings !== 'object' || Array.isArray(backup.weddingSettings))) throw new Error('Pengaturan pernikahan tidak valid.');
-  return backup;
+  return { ...backup, pockets };
 };
 
 export const MAX_BACKUP_SIZE = MAX_BACKUP_BYTES;

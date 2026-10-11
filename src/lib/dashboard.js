@@ -1,6 +1,6 @@
-import { accountLabel, calcWallet, toLocalMonthKey } from '../store/useStore';
-import { koreksiSelisih, buildKoreksiTx } from './koreksiSaldoHelpers';
-import { nextDue } from './debtHelpers';
+import { calcWallet, isPocketId, toLocalMonthKey } from '../store/useStore.js';
+import { koreksiSelisih, buildKoreksiTx } from './koreksiSaldoHelpers.js';
+import { nextDue } from './debtHelpers.js';
 
 export { koreksiSelisih, buildKoreksiTx };
 
@@ -15,7 +15,7 @@ export const getDueSoonDebts = (debts, now = new Date()) => debts.map((debt) => 
   return remaining > 0 && days <= 7 ? { ...debt, days, remaining, duePeriode: nd.periode, dueTanggal: nd.tanggal } : null;
 }).filter(Boolean).sort((a, b) => a.days - b.days);
 
-export const getDashboardData = (transactions, debts, now = new Date()) => {
+export const getDashboardData = (transactions, debts, now = new Date(), pockets = []) => {
   const month = toLocalMonthKey(now);
   const monthTransactions = transactions.filter((tx) => dateValue(tx).startsWith(month));
   const spending = monthTransactions.filter((tx) => tx.jenis === 'Pengeluaran');
@@ -26,7 +26,7 @@ export const getDashboardData = (transactions, debts, now = new Date()) => {
   }, {});
 
   return {
-    wallet: calcWallet(transactions),
+    wallet: calcWallet(transactions, pockets),
     income: monthTransactions.filter((tx) => tx.jenis === 'Pemasukan').reduce((sum, tx) => sum + Number(tx.nominal || 0), 0),
     expense: spending.reduce((sum, tx) => sum + Number(tx.nominal || 0), 0),
     spendingByCategory: Object.entries(byCategory).sort((a, b) => b[1] - a[1]),
@@ -36,6 +36,11 @@ export const getDashboardData = (transactions, debts, now = new Date()) => {
 };
 
 export const formatRp = (value) => `Rp ${Math.abs(Math.round(Number(value) || 0)).toLocaleString('id-ID')}`;
-export { formatThousands } from './formatInput';
+export { formatThousands } from './formatInput.js';
 export const signedRp = (tx) => `${tx.jenis === 'Pemasukan' ? '+' : '-'}${formatRp(tx.nominal)}`;
-export const transactionAccount = (tx) => tx.jenis === 'CashMove' ? `${accountLabel(tx.fromAccount)} → ${accountLabel(tx.toAccount)}` : accountLabel(tx.account || tx.paymentMethod);
+const accountName = (account, pockets) => {
+  if (account === 'Cash') return 'Cash';
+  if (isPocketId(account)) return pockets.find((pocket) => pocket.id === account)?.nama || 'Kantong dihapus';
+  return 'QRIS';
+};
+export const transactionAccount = (tx, pockets = []) => tx.jenis === 'CashMove' ? `${accountName(tx.fromAccount, pockets)} → ${accountName(tx.toAccount, pockets)}` : accountName(tx.account || tx.paymentMethod, pockets);

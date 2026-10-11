@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<title>Mockup — Kantong Alokasi Dana</title>
+<style>
+  :root {
+    --bg: #060608;
+    --bg-surface-1: rgba(255,255,255,0.03);
+    --bg-surface-2: rgba(255,255,255,0.06);
+    --border-1: rgba(255,255,255,0.07);
+    --border-2: rgba(255,255,255,0.08);
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255,255,255,0.65);
+    --text-tertiary: rgba(255,255,255,0.50);
+    --text-muted: rgba(255,255,255,0.35);
+    --accent: #5856d6;
+    --accent-weak: #a78bfa;
+    --success: #34c759;
+    --error: #ff3b30;
+    --warning: #ff9f0a;
+    --warning-weak: #ffcc66;
+    --surface-muted: rgba(255,255,255,0.04);
+    --surface-track: rgba(255,255,255,0.08);
+    --bg-modal: #121217;
+    --bg-elevated: #0a0a0e;
+    --radius-card: 20px;
+    --radius-input: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    padding: 26px 24px 34px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .stage { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; }
+  .col { width: 328px; }
+  .cap {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase;
+    color: var(--text-tertiary); margin-bottom: 10px;
+  }
+  .phone {
+    background: var(--bg); border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 14px;
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,0.9);
+  }
+  .note {
+    margin-top: 10px; font-size: 11px; line-height: 1.55; color: var(--text-tertiary);
+  }
+  .note b { color: var(--text-secondary); font-weight: 600; }
+
+  /* --- hero --- */
+  .hero-card {
+    background: linear-gradient(135deg, rgba(88,86,214,.14), rgba(167,139,250,.06));
+    border: 1px solid rgba(88,86,214,.22);
+    border-radius: 24px; padding: 18px;
+    box-shadow: 0 12px 32px -8px rgba(88,86,214,.20), inset 0 1px 1px rgba(255,255,255,.08);
+  }
+  .hero-label { font-size: 10px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase; color: var(--text-secondary); }
+  .hero-value { margin-top: 8px; font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+  .hero-sub { margin-top: 4px; font-size: 11px; color: var(--text-secondary); }
+  .mini-grid { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mini { border: 1px solid var(--border-1); background: var(--bg-surface-1); border-radius: 16px; padding: 10px 12px; }
+  .mini.qris { border-color: rgba(88,86,214,.25); background: rgba(88,86,214,.10); }
+  .mini .lbl { display: flex; align-items: center; gap: 6px; font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-secondary); }
+  .mini .val { margin-top: 6px; font-size: 13px; font-weight: 700; }
+  .dot { width: 6px; height: 6px; border-radius: 999px; flex-shrink: 0; }
+
+  /* --- new: kantong row in hero --- */
+  .kantong-row {
+    margin-top: 10px; display: flex; align-items: center; gap: 10px;
+    border: 1px solid rgba(88,86,214,.45); background: rgba(88,86,214,.14);
+    border-radius: 16px; padding: 11px 12px;
+  }
+  .kantong-row .ico { font-size: 17px; line-height: 1; }
+  .kantong-row .txt { min-width: 0; flex: 1; }
+  .kantong-row .t1 { font-size: 12px; font-weight: 700; color: var(--accent-weak); }
+  .kantong-row .t2 { margin-top: 2px; font-size: 10px; color: var(--text-tertiary); }
+  .kantong-row .amt { font-size: 13px; font-weight: 700; color: var(--accent-weak); }
+  .chev { color: var(--text-tertiary); font-size: 14px; }
+
+  /* --- section title --- */
+  .sec { font-size: 10px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase; color: var(--text-secondary); }
+
+  /* --- shortcut cards --- */
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .card {
+    display: flex; align-items: center; gap: 10px; min-height: 76px;
+    border: 1px solid var(--border-1); background: var(--bg-surface-2);
+    border-radius: 18px; padding: 12px; text-align: left;
+  }
+  .card .ic {
+    width: 36px; height: 36px; flex-shrink: 0; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+    border: 1px solid var(--border-1); background: var(--surface-muted);
+  }
+  .card .tt { font-size: 12px; font-weight: 600; line-height: 1.2; }
+  .card .ss { margin-top: 2px; font-size: 10px; color: var(--text-secondary); line-height: 1.2; }
+  .card.new { border-color: rgba(88,86,214,.45); background: rgba(88,86,214,.12); }
+  .card.new .ic { border-color: rgba(88,86,214,.4); background: rgba(88,86,214,.18); }
+  .card.new .tt { color: var(--accent-weak); }
+
+  /* --- page head --- */
+  .back { font-size: 11px; font-weight: 600; color: var(--accent-weak); }
+  .pagehead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .pagehead h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 12px;
+    border-radius: 999px; border: 1px solid var(--border-1); background: var(--bg-surface-1);
+    font-size: 11px; font-weight: 700; color: var(--text-secondary);
+  }
+  .pill.accent { border-color: rgba(88,86,214,.45); background: rgba(88,86,214,.18); color: var(--accent-weak); }
+
+  /* --- total card --- */
+  .totalcard {
+    border: 1px solid rgba(88,86,214,.25); background: linear-gradient(135deg, rgba(88,86,214,.14), rgba(167,139,250,.05));
+    border-radius: var(--radius-card); padding: 16px;
+  }
+  .totalcard .lbl { font-size: 10px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase; color: var(--text-secondary); }
+  .totalcard .val { margin-top: 7px; font-size: 24px; font-weight: 800; letter-spacing: -0.4px; color: var(--accent-weak); }
+  .totalcard .sub { margin-top: 6px; font-size: 10.5px; line-height: 1.55; color: var(--text-secondary); }
+
+  /* --- pocket card --- */
+  .pocket {
+    border: 1px solid var(--border-1); background: var(--bg-surface-1);
+    border-radius: var(--radius-card); padding: 14px;
+  }
+  .pocket + .pocket { margin-top: 10px; }
+  .pocket .top { display: flex; align-items: center; gap: 10px; }
+  .pocket .pic {
+    width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px; font-size: 17px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border-1); background: var(--surface-muted);
+  }
+  .pocket .nm { font-size: 13px; font-weight: 700; }
+  .pocket .meta { margin-top: 2px; font-size: 10px; color: var(--text-secondary); }
+  .pocket .bal { margin-left: auto; text-align: right; }
+  .pocket .bal b { font-size: 15px; font-weight: 700; }
+  .pocket .bal span { display: block; margin-top: 2px; font-size: 9px; color: var(--text-tertiary); }
+  .bar { margin-top: 10px; height: 4px; border-radius: 999px; background: var(--surface-track); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 999px; background: var(--accent-weak); }
+  .barrow { display: flex; justify-content: space-between; margin-top: 6px; font-size: 9.5px; color: var(--text-tertiary); }
+  .acts { display: flex; gap: 8px; margin-top: 11px; }
+  .btn {
+    flex: 1; min-height: 38px; border-radius: var(--radius-input); font-size: 11.5px; font-weight: 700;
+    border: 1px solid var(--border-1); background: var(--bg-surface-1); color: var(--text-primary);
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+  }
+  .btn.primary { border-color: transparent; background: var(--accent); color: #fff; }
+  .btn.ghost { color: var(--text-secondary); }
+
+  .tag2 {
+    display: inline-flex; align-items: center; margin-left: 5px; padding: 1px 6px;
+    border-radius: 999px; border: 1px solid rgba(255,159,10,.35); background: rgba(255,159,10,.12);
+    font-size: 8px; font-weight: 700; letter-spacing: .6px; color: var(--warning-weak);
+  }
+  .due { color: var(--warning-weak); }
+
+  /* --- form --- */
+  .seg { display: flex; gap: 4px; border: 1px solid var(--border-1); background: rgba(0,0,0,.35); border-radius: var(--radius-input); padding: 4px; }
+  .seg > span { flex: 1; min-height: 38px; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; color: var(--text-muted); border-radius: 11px; }
+  .seg > span.on { background: rgba(88,86,214,.20); color: var(--accent-weak); }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > label { font-size: 10.5px; font-weight: 600; color: var(--text-secondary); }
+  .input {
+    min-height: 46px; border-radius: var(--radius-input); border: 1px solid var(--border-1);
+    background: var(--bg-surface-1); padding: 0 13px; font-size: 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .input .ph { color: var(--text-muted); }
+  .input.pick { border-color: rgba(88,86,214,.35); }
+  .arrow { text-align: center; font-size: 15px; color: var(--text-tertiary); }
+  .save {
+    min-height: 46px; border-radius: var(--radius-input); font-size: 13.5px; font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), #7c7aff); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .hint { font-size: 10.5px; line-height: 1.55; color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- ============ FRAME 1: DASHBOARD ============ -->
+  <div class="col">
+    <div class="cap">01 · Dashboard — yang baru ditandai</div>
+    <div class="phone">
+      <section class="hero-card">
+        <div class="hero-label">Total Uang (QRIS + Cash)</div>
+        <div class="hero-value">Rp 8.750.000</div>
+        <div class="hero-sub">Saldo gabungan · Oktober 2026</div>
+        <div class="mini-grid">
+          <div class="mini qris">
+            <div class="lbl"><span class="dot" style="background:#60a5fa"></span>QRIS</div>
+            <div class="val" style="color:#93c5fd">Rp 5.500.000</div>
+          </div>
+          <div class="mini">
+            <div class="lbl"><span class="dot" style="background:#fbbf24"></span>CASH</div>
+            <div class="val" style="color:#fcd34d">Rp 3.250.000</div>
+          </div>
+        </div>
+
+        <!-- NEW -->
+        <div class="kantong-row">
+          <span class="ico">🏦</span>
+          <span class="txt">
+            <span class="t1">Kantong Alokasi</span>
+            <span class="t2">Tersisih di luar saldo di atas · 3 kantong</span>
+          </span>
+          <span class="amt">Rp 3.250.000</span>
+          <span class="chev">›</span>
+        </div>
+      </section>
+
+      <div class="sec">Tools berdua</div>
+      <div class="cards">
+        <div class="card"><span class="ic">💍</span><span><span class="tt">Dana Nikah</span><span class="ss">Target tabungan</span></span></div>
+        <div class="card"><span class="ic">🤝</span><span><span class="tt">Hutang &amp; Piutang</span><span class="ss">Kelola pinjaman</span></span></div>
+        <div class="card"><span class="ic">🧾</span><span><span class="tt">Split Bill</span><span class="ss">Bagi tagihan</span></span></div>
+        <div class="card new"><span class="ic">🏦</span><span><span class="tt">Kantong Alokasi</span><span class="ss">Rp 3,25jt · 3 kantong</span></span></div>
+      </div>
+    </div>
+    <div class="note">
+      <b>Baru:</b> 1 baris di hero + 1 ShortcutCard. Ikut pola yang sudah ada (Dashboard.jsx:246-253) — nol perubahan Bnav, nol tab baru.
+    </div>
+  </div>
+
+  <!-- ============ FRAME 2: HALAMAN KANTONG ============ -->
+  <div class="col">
+    <div class="cap">02 · Halaman Kantong Alokasi</div>
+    <div class="phone">
+      <div class="back">← Kembali ke Dashboard</div>
+      <div class="pagehead">
+        <h2>Kantong Alokasi</h2>
+        <span class="pill accent">+ Kantong</span>
+      </div>
+
+      <div class="totalcard">
+        <div class="lbl">Total dana terkantong</div>
+        <div class="val">Rp 3.250.000</div>
+        <div class="sub">Uang ini sudah keluar dari saldo QRIS/Cash. Bayar tagihan dari kantong biar saldo bulanan nggak ketarik.</div>
+      </div>
+
+      <div class="pocket">
+        <div class="top">
+          <span class="pic">🏠</span>
+          <span>
+            <span class="nm">Kosan</span>
+            <span class="meta">Jatuh tempo tgl 5 · <span class="due">3 hari lagi</span><span class="tag2">TAHAP 2</span></span>
+          </span>
+          <span class="bal"><b>Rp 1.500.000</b><span>saldo kantong</span></span>
+        </div>
+        <div class="bar"><i style="width:100%"></i></div>
+        <div class="barrow"><span>Target bulan ini Rp 1.500.000</span><span style="color:var(--success)">Cukup</span></div>
+        <div class="acts">
+          <span class="btn primary">Alokasi</span>
+          <span class="btn">Bayar</span>
+        </div>
+      </div>
+
+      <div class="pocket">
+        <div class="top">
+          <span class="pic">⚡</span>
+          <span>
+            <span class="nm">Listrik</span>
+            <span class="meta">Jatuh tempo tgl 20 · 12 hari lagi<span class="tag2">TAHAP 2</span></span>
+          </span>
+          <span class="bal"><b>Rp 850.000</b><span>saldo kantong</span></span>
+        </div>
+        <div class="bar"><i style="width:85%"></i></div>
+        <div class="barrow"><span>Target bulan ini Rp 1.000.000</span><span style="color:var(--warning-weak)">Kurang Rp 150.000</span></div>
+        <div class="acts">
+          <span class="btn primary">Alokasi</span>
+          <span class="btn">Bayar</span>
+        </div>
+      </div>
+
+      <div class="pocket">
+        <div class="top">
+          <span class="pic">🌐</span>
+          <span>
+            <span class="nm">Internet</span>
+            <span class="meta">Jatuh tempo tgl 15 · 7 hari lagi<span class="tag2">TAHAP 2</span></span>
+          </span>
+          <span class="bal"><b>Rp 900.000</b><span>saldo kantong</span></span>
+        </div>
+        <div class="bar"><i style="width:100%"></i></div>
+        <div class="barrow"><span>Target bulan ini Rp 350.000</span><span style="color:var(--success)">Cukup</span></div>
+        <div class="acts">
+          <span class="btn primary">Alokasi</span>
+          <span class="btn">Bayar</span>
+        </div>
+      </div>
+    </div>
+    <div class="note">
+      <b>Tahap 1:</b> nama + icon + saldo + tombol Alokasi/Bayar. <b>Tahap 2</b> (badge kuning): target bulanan, jatuh tempo, indikator "kurang Rp X" — murni nempel, nggak ngubah Tahap 1.
+    </div>
+  </div>
+
+  <!-- ============ FRAME 3: FORM ============ -->
+  <div class="col">
+    <div class="cap">03 · Form — mode lama, diganti nama</div>
+    <div class="phone">
+      <div class="back">← Kembali ke Dashboard</div>
+      <div class="seg">
+        <span>Catat</span>
+        <span class="on">Pindah Dana</span>
+        <span>Split</span>
+      </div>
+      <p class="hint">Dulu tombolnya "Atur Cash" (InputTransaction.jsx:72-83). Isinya sudah CashMove + biaya admin + handler offline — tinggal dropdown-nya dibikin dinamis.</p>
+
+      <div class="field">
+        <label>Dari</label>
+        <div class="input pick"><span>QRIS</span><span class="chev">▾</span></div>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="field">
+        <label>Ke</label>
+        <div class="input pick"><span>🏠 Kosan</span><span class="chev">▾</span></div>
+      </div>
+      <div class="field">
+        <label>Nominal</label>
+        <div class="input"><span>Rp 500.000</span></div>
+      </div>
+      <div class="field">
+        <label>Tanggal</label>
+        <div class="input"><span>2026-10-11</span></div>
+      </div>
+      <div class="field">
+        <label>Deskripsi <span style="color:var(--text-tertiary);font-weight:400">(opsional)</span></label>
+        <div class="input"><span>Alokasi kosan Oktober</span></div>
+      </div>
+      <div class="save">Simpan Pindah Dana</div>
+    </div>
+    <div class="note">
+      <b>Satu kontrol nutup 3 hal:</b> tarik cash, setor cash, alokasi kantong. Nggak ada mode baru, nggak ada form baru.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -17,6 +17,8 @@ export const workspaceTxItemRef = (workspaceId, id) => ref(db, workspacePath(wor
 export const workspaceDebtRef = (workspaceId) => ref(db, workspacePath(workspaceId, 'debts'));
 export const workspaceDebtItemRef = (workspaceId, id) => ref(db, workspacePath(workspaceId, `debts/${id}`));
 export const workspaceWeddingRef = (workspaceId) => ref(db, workspacePath(workspaceId, 'wedding_settings'));
+export const workspacePocketRef = (workspaceId) => ref(db, workspacePath(workspaceId, 'pockets'));
+export const workspacePocketItemRef = (workspaceId, id) => ref(db, workspacePath(workspaceId, `pockets/${id}`));
 
 // Legacy user-scoped refs. Data lama tetap ada di Firebase tapi TIDAK dipakai flow baru (PRD §5, §14.4).
 export const txRef = (uid) => ref(db, userPath(uid, 'transactions'));
@@ -40,6 +42,9 @@ export const saveCashMove = (workspaceId, move, adminTx) => {
 export const removeTx = (workspaceId, id) => remove(workspaceTxItemRef(workspaceId, id));
 export const saveDebt = (workspaceId, debt) => set(workspaceDebtItemRef(workspaceId, debt.id), debt);
 export const saveWeddingSettings = (workspaceId, settings) => set(workspaceWeddingRef(workspaceId), settings);
+// Kantong nggak dihapus keras. Arsip = savePocket({ ...pocket, aktif: false }) — id harus tetap ada
+// supaya transaksi lama yang nunjuk ke dia nggak ke-fallback ke QRIS dan bikin saldo salah hitung.
+export const savePocket = (workspaceId, pocket) => set(workspacePocketItemRef(workspaceId, pocket.id), pocket);
 export const saveDebtPayment = async (workspaceId, debt, transaction) => {
   const payment = { id: transaction.cicilanId, nominal: transaction.nominal, tanggal: transaction.tanggal, catatan: transaction.catatan || '', txId: transaction.id };
   const transactionPath = workspacePath(workspaceId, `transactions/${transaction.id}`);
@@ -70,6 +75,7 @@ export const replaceWorkspaceData = (workspaceId, data) => update(ref(db), {
   [workspacePath(workspaceId, 'transactions')]: data.transactions,
   [workspacePath(workspaceId, 'debts')]: data.debts,
   [workspacePath(workspaceId, 'wedding_settings')]: data.weddingSettings,
+  ...(Array.isArray(data.pockets) ? { [workspacePath(workspaceId, 'pockets')]: data.pockets } : {}),
 });
 
 export { get, set, push, remove, update, onValue, off };

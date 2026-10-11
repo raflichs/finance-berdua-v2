@@ -34,8 +34,10 @@ function Donut({ data, total }) {
 }
 
 function Dashboard() {
-  const { transactions, debts, setActiveTab, setTransactions, workspaceId, myName, uid, toLocalDateKey } = useStore();
-  const wallet = useMemo(() => calcWallet(transactions), [transactions]);
+  const { transactions, debts, pockets, setActiveTab, setTransactions, workspaceId, myName, uid, toLocalDateKey } = useStore();
+  const wallet = useMemo(() => calcWallet(transactions, pockets), [transactions, pockets]);
+  const pocketsAktif = useMemo(() => pockets.filter((p) => p.aktif !== false), [pockets]);
+  const pocketsTotal = useMemo(() => pocketsAktif.reduce((sum, p) => sum + (wallet.pockets[p.id] || 0), 0), [pocketsAktif, wallet]);
   const [selectedMonth, setSelectedMonth] = useState(() => toLocalMonthKey());
   const [hideBalance, setHideBalance] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
@@ -43,7 +45,7 @@ function Dashboard() {
   const koreksiTriggerRef = useRef(null);
   const monthRef = useRef(null);
   const closeKoreksi = useCallback(() => setKoreksiOpen(false), []);
-  const data = getDashboardData(transactions, debts, new Date(`${selectedMonth}-01T00:00:00`));
+  const data = getDashboardData(transactions, debts, new Date(`${selectedMonth}-01T00:00:00`), pockets);
   const topCategories = data.spendingByCategory.slice(0, 4);
   const dueDebts = useMemo(() => getDueSoonDebts(debts), [debts]);
   const options = useMemo(() => monthOptions(), []);
@@ -168,12 +170,30 @@ function Dashboard() {
              <p className="mt-2 truncate text-sm font-bold text-[var(--error)]">{display(data.expense)}</p>
            </div>
          </div>
-          <button
-            ref={koreksiTriggerRef}
-            type="button"
-            onClick={() => setKoreksiOpen(true)}
-            className="mt-4 min-h-11 w-full rounded-xl bg-[var(--accent)]/20 text-sm font-bold text-[var(--accent-weak)] flex items-center justify-center gap-2"
-          >
+        <button
+          type="button"
+          className="mt-4 flex w-full items-center justify-between gap-3 rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface-1)] px-4 py-3 text-left"
+          onClick={() => setActiveTab('kantong')}
+          aria-label="Buka halaman Kantong Alokasi"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="material-symbols-outlined text-base text-[var(--accent-weak)]" aria-hidden="true">savings</span>
+            <span className="min-w-0">
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">Kantong Alokasi</span>
+              <span className="block truncate text-[11px] text-[var(--text-tertiary)]">Tersisih di luar saldo di atas · {pocketsAktif.length} kantong</span>
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1">
+            <strong className="text-sm font-bold">{display(pocketsTotal)}</strong>
+            <span className="material-symbols-outlined text-lg text-[var(--text-tertiary)]" aria-hidden="true">chevron_right</span>
+          </span>
+        </button>
+        <button
+          ref={koreksiTriggerRef}
+          type="button"
+          onClick={() => setKoreksiOpen(true)}
+          className="mt-4 min-h-11 w-full rounded-xl bg-[var(--accent)]/20 text-sm font-bold text-[var(--accent-weak)] flex items-center justify-center gap-2"
+        >
             <span className="material-symbols-outlined text-base" aria-hidden="true">balance</span>
             Koreksi Saldo
           </button>
@@ -249,6 +269,7 @@ function Dashboard() {
           <ShortcutCard icon="favorite" title="Dana Nikah" subtitle="Target tabungan" tone="wedding" onClick={() => setActiveTab('savings')} />
           <ShortcutCard icon="payments" title="Hutang & Piutang" subtitle="Kelola pinjaman" tone="error" onClick={() => setActiveTab('debt')} />
           <ShortcutCard icon="call_split" title="Split Bill" subtitle="Bagi tagihan" tone="accent" onClick={() => setActiveTab('split')} />
+          <ShortcutCard icon="savings" title="Kantong Alokasi" subtitle={`${formatRp(pocketsTotal)} · ${pocketsAktif.length} kantong`} tone="accent" onClick={() => setActiveTab('kantong')} />
         </div>
       </section>
 
@@ -267,7 +288,7 @@ function Dashboard() {
                       </span>
                       <span className="min-w-0">
                         <p className="truncate text-sm font-semibold">{tx.deskripsi || tx.kategori}</p>
-                        <p className="truncate text-xs text-[var(--text-secondary)]">{tx.tanggal} · {transactionAccount(tx)}</p>
+                        <p className="truncate text-xs text-[var(--text-secondary)]">{tx.tanggal} · {transactionAccount(tx, pockets)}</p>
                       </span>
                     </span>
                     <strong className={`shrink-0 truncate text-sm font-bold ${tx.jenis === 'Pemasukan' ? 'text-[var(--success)]' : tx.jenis === 'CashMove' ? 'text-[#60a5fa]' : 'text-[var(--error)]'}`}>{signedRp(tx)}</strong>

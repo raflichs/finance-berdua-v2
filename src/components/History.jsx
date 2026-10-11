@@ -7,12 +7,15 @@ import { errorMessage } from '../lib/firebaseErrors';
 
 const PRIMARY_FILTERS = ['Semua', 'Pemasukan', 'Pengeluaran'];
 const ACCOUNT_FILTERS = ['Semua', 'QRIS', 'Cash', 'Transfer Cash'];
+const POCKET_FILTER_PREFIX = 'Kantong: ';
 const iconFor = (category) => ({ Makan: 'restaurant', Transport: 'directions_car', Belanja: 'shopping_cart', Tagihan: 'receipt_long', Nongkrong: 'local_cafe', Hiburan: 'movie', Tabungan: 'savings', 'Pulsa/Kuota': 'phone_android', Gaji: 'payments', Bonus: 'redeem' }[category] || 'category');
 const monthLabel = (key) => new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(`${key}-01T00:00:00`));
 const recentMonths = () => Array.from({ length: 6 }, (_, index) => { const date = new Date(); date.setDate(1); date.setMonth(date.getMonth() - index); return toLocalMonthKey(date); });
 
 export default function History() {
-  const { uid, workspaceId, myName, partnerName, parseMoney, transactions, setTransactions, setSyncing, setActiveTab } = useStore();
+  const { uid, workspaceId, myName, partnerName, parseMoney, transactions, pockets, setTransactions, setSyncing, setActiveTab } = useStore();
+  // Kantong difilter pakai nama (bukan id) biar sama kayak yang kelihatan di daftar transaksi.
+  const accountFilters = useMemo(() => [...ACCOUNT_FILTERS, ...pockets.map((p) => `${POCKET_FILTER_PREFIX}${p.nama}`)], [pockets]);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('Semua');
   const [accountFilter, setAccountFilter] = useState('Semua');
@@ -53,12 +56,14 @@ export default function History() {
       const matchesType = filterType === 'Semua' || tx.jenis === filterType;
       const matchesAccount = accountFilter === 'Semua'
         || (accountFilter === 'Transfer Cash' && isTransfer)
-        || (!isTransfer && transactionAccount(tx) === accountFilter);
+        || (!isTransfer && accountFilter.startsWith(POCKET_FILTER_PREFIX)
+          ? transactionAccount(tx, pockets).includes(accountFilter.slice(POCKET_FILTER_PREFIX.length))
+          : !isTransfer && transactionAccount(tx, pockets) === accountFilter);
       const typeExcludesTransfer = (filterType === 'Pemasukan' || filterType === 'Pengeluaran') && isTransfer;
       const matchesFilter = !typeExcludesTransfer && matchesType && matchesAccount;
       return matchesMonth && matchesSearch && matchesFilter;
     }).sort((a, b) => String(b.tanggal || '').localeCompare(String(a.tanggal || '')) || Number(b.id || 0) - Number(a.id || 0));
-  }, [filterType, accountFilter, month, months, search, transactions]);
+  }, [filterType, accountFilter, month, months, search, transactions, pockets]);
 
   const grouped = useMemo(() => Object.entries(filtered.reduce((result, tx) => { const key = String(tx.tanggal || '').slice(0, 7) || 'Tanpa tanggal'; (result[key] ||= []).push(tx); return result; }, {})), [filtered]);
   const totals = useMemo(() => filtered.reduce((result, tx) => { if (tx.jenis === 'Pemasukan') result.income += Number(tx.nominal || 0); if (tx.jenis === 'Pengeluaran') result.expense += Number(tx.nominal || 0); return result; }, { income: 0, expense: 0 }), [filtered]);
@@ -177,7 +182,7 @@ export default function History() {
             </div>
             <p className="mb-2 text-xs font-semibold tracking-widest uppercase text-[var(--text-secondary)]">Akun pembayaran</p>
             <div className="flex flex-wrap gap-2">
-              {ACCOUNT_FILTERS.map((value) => (
+              {accountFilters.map((value) => (
                 <button key={value} type="button" onClick={() => setDraftAccount(value)} className={`pill-control ${draftAccount === value ? 'pill-control--active' : ''}`}>{value}</button>
               ))}
             </div>
@@ -208,7 +213,7 @@ export default function History() {
                   <span className={`transaction-icon material-symbols-outlined flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tx.jenis === 'Pemasukan' ? 'bg-[var(--success)]/10 text-[var(--success)]' : cashMove ? 'bg-[var(--info-soft)] text-[var(--info)]' : 'bg-[var(--error)]/10 text-[var(--error)]'}`} aria-hidden="true">{cashMove ? 'swap_horiz' : iconFor(tx.kategori)}</span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-semibold">{tx.deskripsi || tx.kategori}</div>
-                    <div className="truncate text-[11px] text-[var(--text-secondary)]">{tx.tanggal || '-'} · {transactionAccount(tx)}{cashMove && ' · Transfer Cash'}</div>
+                    <div className="truncate text-[11px] text-[var(--text-secondary)]">{tx.tanggal || '-'} · {transactionAccount(tx, pockets)}{cashMove && ' · Transfer Cash'}</div>
                     <div className="truncate text-[10px] text-[var(--accent-weak)]">{mine ? (myName || 'Gue') : (tx.addedByName || partnerName || 'Tidak diketahui')}</div>
                   </div>
                   <div className="flex max-w-[44%] shrink-0 flex-col items-end gap-1">

@@ -14,6 +14,7 @@ const History = lazy(() => import('./components/History'));
 const Debt = lazy(() => import('./components/Debt'));
 const Savings = lazy(() => import('./components/Savings'));
 const SplitBill = lazy(() => import('./components/SplitBill'));
+const Kantong = lazy(() => import('./components/Kantong'));
 
 const TAB_TITLES = {
   dashboard: 'Dashboard',
@@ -22,13 +23,14 @@ const TAB_TITLES = {
   debt: 'Hutang & Piutang',
   savings: 'Dana Nikah',
   split: 'Split Bill',
+  kantong: 'Kantong Alokasi',
 };
 
 function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
-  const { activeTab, setAuth, setPartnerName, uid, myName, online, syncing, syncError, lastSyncedAt, syncStale, setTransactions, setDebts, setWeddingSettings, setSyncing, setSyncError, setLastSyncedAt, setSyncStale, workspaceId, workspaceLoading, workspaceError, setWorkspace, setWorkspaceLoading, setWorkspaceError, clearWorkspace } = useStore();
+  const { activeTab, setAuth, setPartnerName, uid, myName, online, syncing, syncError, lastSyncedAt, syncStale, setTransactions, setDebts, setPockets, setWeddingSettings, setSyncing, setSyncError, setLastSyncedAt, setSyncStale, workspaceId, workspaceLoading, workspaceError, setWorkspace, setWorkspaceLoading, setWorkspaceError, clearWorkspace } = useStore();
 
   useEffect(() => {
     let cancelled = false;
@@ -76,12 +78,13 @@ function App() {
     return subscribeToWorkspaceData(workspaceId, {
       onTransactions: setTransactions,
       onDebts: setDebts,
+      onPockets: setPockets,
       onWeddingSettings: setWeddingSettings,
        onSyncing: setSyncing,
        onSnapshot: setLastSyncedAt,
        onError: setSyncError,
     });
-  }, [uid, workspaceId, setDebts, setLastSyncedAt, setSyncError, setSyncing, setTransactions, setWeddingSettings]);
+  }, [uid, workspaceId, setDebts, setPockets, setLastSyncedAt, setSyncError, setSyncing, setTransactions, setWeddingSettings]);
 
   useEffect(() => {
     if (!lastSyncedAt) return undefined;
@@ -168,7 +171,7 @@ function App() {
       {/* Content - hide Bnav on form flows so inputs/submit never get covered */}
       <main id="main-content" tabIndex="-1" className={`app-main flex-1 overflow-y-auto py-4 ${hideBnav ? 'pb-[calc(16px+env(safe-area-inset-bottom))]' : 'pb-[calc(var(--bnav-height)+32px+env(safe-area-inset-bottom))]'}`}>
         <Suspense fallback={<div className="rounded-[var(--radius-card)] border border-[var(--border-1)] p-5 text-sm text-[var(--text-secondary)]" role="status" aria-live="polite">Memuat fitur…</div>}>
-          {activeTab === 'dashboard' ? <Dashboard /> : activeTab === 'input' ? <InputTransaction /> : activeTab === 'history' ? <History /> : activeTab === 'debt' ? <Debt /> : activeTab === 'savings' ? <Savings /> : activeTab === 'split' ? <SplitBill /> : (
+          {activeTab === 'dashboard' ? <Dashboard /> : activeTab === 'input' ? <InputTransaction /> : activeTab === 'history' ? <History /> : activeTab === 'debt' ? <Debt /> : activeTab === 'savings' ? <Savings /> : activeTab === 'split' ? <SplitBill /> : activeTab === 'kantong' ? <Kantong /> : (
             <div className="rounded-[var(--radius-card)] border border-[var(--border-1)] p-5" style={{ background: 'var(--bg-surface-1)' }}>
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{activeTab} — segera hadir</p>
               <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>UID: {uid.slice(0, 8)}...</p>

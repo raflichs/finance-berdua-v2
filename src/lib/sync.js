@@ -1,4 +1,4 @@
-import { workspaceDebtRef, workspaceTxRef, workspaceWeddingRef, onValue, off } from './db';
+import { workspaceDebtRef, workspacePocketRef, workspaceTxRef, workspaceWeddingRef, onValue, off } from './db';
 
 const values = (data) => data ? Object.values(data) : [];
 const errorMessage = (error) => error?.code === 'PERMISSION_DENIED' ? 'Akses database ditolak. Periksa akun atau RTDB Rules.' : 'Sinkronisasi gagal. Periksa koneksi internet.';
@@ -22,6 +22,7 @@ export const subscribeToWorkspaceData = (workspaceId, handlers) => {
       return { ...debt, cicilan: Array.isArray(cicilan) ? cicilan : values(cicilan) };
     }))],
     ['wedding', workspaceWeddingRef(workspaceId), (snapshot) => handlers.onWeddingSettings(snapshot.val())],
+    ['pockets', workspacePocketRef(workspaceId), (snapshot) => handlers.onPockets(values(snapshot.val()))],
   ];
   const listeners = [];
   subscriptions.forEach(([resource, databaseRef, callback]) => {

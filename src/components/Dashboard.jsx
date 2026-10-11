@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useStore, { calcWallet, toLocalMonthKey } from '../store/useStore';
-import { formatRp, getDashboardData, signedRp, transactionAccount, buildKoreksiTx, getDueSoonDebts } from '../lib/dashboard';
+import { formatRp, getDashboardData, signedRp, transactionAccount, buildKoreksiTx, getDueSoonDebts, getDueSoonPockets } from '../lib/dashboard';
 import { saveTx } from '../lib/db';
 import { enqueueTx } from '../lib/offlineQueue';
 import { auth } from '../config/firebase';
@@ -34,7 +34,7 @@ function Donut({ data, total }) {
 }
 
 function Dashboard() {
-  const { transactions, debts, pockets, setActiveTab, setTransactions, workspaceId, myName, uid, toLocalDateKey } = useStore();
+  const { transactions, debts, pockets, setActiveTab, setTransactions, workspaceId, myName, uid, toLocalDateKey, setInputDraft } = useStore();
   const wallet = useMemo(() => calcWallet(transactions, pockets), [transactions, pockets]);
   const pocketsAktif = useMemo(() => pockets.filter((p) => p.aktif !== false), [pockets]);
   const pocketsTotal = useMemo(() => pocketsAktif.reduce((sum, p) => sum + (wallet.pockets[p.id] || 0), 0), [pocketsAktif, wallet]);
@@ -48,6 +48,7 @@ function Dashboard() {
   const data = getDashboardData(transactions, debts, new Date(`${selectedMonth}-01T00:00:00`), pockets);
   const topCategories = data.spendingByCategory.slice(0, 4);
   const dueDebts = useMemo(() => getDueSoonDebts(debts), [debts]);
+  const duePockets = useMemo(() => getDueSoonPockets(pockets, wallet), [pockets, wallet]);
   const options = useMemo(() => monthOptions(), []);
   const display = (value) => hideBalance ? '••••••' : formatRp(value);
   const monthLabel = monthName(selectedMonth);
@@ -61,6 +62,8 @@ function Dashboard() {
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
   }, [monthOpen]);
+
+  const alokasiPocket = (id) => { setInputDraft({ mode: 'cash', from: 'QRIS', to: id }); setActiveTab('input'); };
 
   const handleKoreksiSaved = async (target) => {
     const currentUser = auth.currentUser;
@@ -224,6 +227,27 @@ function Dashboard() {
                   <p className="truncate text-xs text-[var(--text-secondary)]">{debt.duePeriode ? `Cicilan ${debt.duePeriode} · ` : ''}{debt.days < 0 ? `Terlambat ${Math.abs(debt.days)} hari` : debt.days === 0 ? 'Jatuh tempo hari ini' : `${debt.days} hari lagi`} · sisa {formatRp(debt.remaining)}</p>
                 </div>
                 <button type="button" className="pill-control shrink-0" onClick={() => setActiveTab('debt')}>Lihat hutang</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Kantong tagihan tetap yang jatuh tempo <= 7 hari tapi saldonya masih kurang */}
+      {duePockets.length > 0 && (
+        <section className="rounded-[var(--radius-card)] border border-[var(--warning)]/25 bg-[var(--warning)]/10 p-4" aria-labelledby="pocket-alert-title">
+          <div className="flex items-center justify-between gap-2">
+            <h2 id="pocket-alert-title" className="text-sm font-bold text-[var(--warning)]">Kantong perlu diisi</h2>
+            <span className="pill-control !min-h-0 !py-1 !px-2.5 !text-xs !bg-[var(--warning)]/15 !border-[var(--warning)]/30 !text-[var(--warning-weak)]">{duePockets.length}</span>
+          </div>
+          <ul className="mt-3 divide-y divide-[var(--border-1)]">
+            {duePockets.slice(0, 3).map((bill) => (
+              <li key={bill.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{bill.icon} {bill.nama}</p>
+                  <p className="truncate text-xs text-[var(--text-secondary)]">{bill.days === 0 ? 'Jatuh tempo hari ini' : `${bill.days} hari lagi`} · kurang {formatRp(bill.shortfall)}</p>
+                </div>
+                <button type="button" className="pill-control shrink-0" onClick={() => alokasiPocket(bill.id)}>Alokasi</button>
               </li>
             ))}
           </ul>

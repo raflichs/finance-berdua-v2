@@ -2,21 +2,21 @@ import { useMemo, useState } from 'react';
 import useStore, { calcWallet } from '../store/useStore';
 import { savePocket } from '../lib/db';
 import { auth } from '../config/firebase';
-import { formatRp } from '../lib/dashboard';
+import { formatRp, formatThousands, pocketBills } from '../lib/dashboard';
 
 // ponytail: kantong ditulis online-only. Offline queue cuma paham tx/cashMove (queueSync.js:14),
 // dan bikin kantong butuh id balik dari server biar transaksi berikutnya nggak nunjuk ke hantu.
 const ICONS = ['🏠', '⚡', '💧', '📶', '🎓', '🚗', '💊', '🎁'];
 
 export default function Kantong() {
-  const { workspaceId, pockets, setPockets, transactions, myName, uid, setActiveTab, setInputDraft } = useStore();
+  const { workspaceId, pockets, setPockets, transactions, myName, uid, parseMoney, setActiveTab, setInputDraft } = useStore();
   const wallet = useMemo(() => calcWallet(transactions, pockets), [transactions, pockets]);
+  const bills = useMemo(() => pocketBills(pockets, wallet), [pockets, wallet]);
   const aktif = pockets.filter((p) => p.aktif !== false);
   const arsip = pockets.filter((p) => p.aktif === false);
   const total = aktif.reduce((sum, p) => sum + (wallet.pockets[p.id] || 0), 0);
-  const [formOpen, setFormOpen] = useState(false);
-  const [nama, setNama] = useState('');
-  const [icon, setIcon] = useState(ICONS[0]);
+  // form === null → form ketutup. form.id ada → mode atur target, nggak ada → mode bikin baru.
+  const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -31,20 +31,37 @@ export default function Kantong() {
     finally { setBusy(false); }
   };
 
-  const buat = async (event) => {
+  const bukaForm = (pocket) => {
+    setError('');
+    setForm(pocket
+      ? { id: pocket.id, nama: pocket.nama, icon: pocket.icon || ICONS[0], nominal: pocket.nominal ? String(pocket.nominal) : '', jatuhTempo: pocket.jatuhTempo ? String(pocket.jatuhTempo) : '' }
+      : { nama: '', icon: ICONS[0], nominal: '', jatuhTempo: '' });
+  };
+
+  const submit = async (event) => {
     event.preventDefault();
-    if (!nama.trim() || busy) return;
+    const nama = form.nama.trim();
+    const nominal = parseMoney(form.nominal);
+    const day = Number(form.jatuhTempo) || 0;
+    if (!nama || busy) return;
+    if (day && (day < 1 || day > 28)) { setError('Tanggal jatuh tempo harus 1-28.'); return; }
     const currentUser = auth.currentUser;
-    const ok = await simpan({
+    const base = form.id ? pockets.find((p) => p.id === form.id) : {
       id: `p_${Date.now()}`,
-      nama: nama.trim().slice(0, 60),
-      icon,
       aktif: true,
       createdByUid: currentUser?.uid || uid,
       createdByName: myName || currentUser?.email || 'Tidak diketahui',
       createdAt: Date.now(),
+    };
+    // `null` di RTDB = hapus child, jadi dikosongin = kantongnya balik tanpa target/jatuh tempo.
+    const ok = await simpan({
+      ...base,
+      nama: nama.slice(0, 60),
+      icon: form.icon,
+      nominal: nominal > 0 ? nominal : null,
+      jatuhTempo: day || null,
     });
-    if (ok) { setNama(''); setIcon(ICONS[0]); setFormOpen(false); }
+    if (ok) setForm(null);
   };
 
   const alokasi = (pocket) => { setInputDraft({ mode: 'cash', from: 'QRIS', to: pocket.id }); setActiveTab('input'); };
@@ -59,21 +76,32 @@ export default function Kantong() {
         <h2 id="pocket-total" className="text-[11px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">Total di kantong</h2>
         <p className="mt-2 truncate text-[30px] font-extrabold tracking-tight" aria-live="polite">{formatRp(total)}</p>
         <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">Uang ini sudah keluar dari saldo QRIS/Cash, jadi nggak ketarik buat jajan. Bayar tagihan dari kantong biar saldo bulanan aman.</p>
-        <button type="button" className="mt-4 min-h-11 w-full rounded-xl bg-[var(--accent)]/20 text-sm font-bold text-[var(--accent-weak)] flex items-center justify-center gap-2" onClick={() => setFormOpen((v) => !v)} aria-expanded={formOpen}>
-          <span className="material-symbols-outlined text-base" aria-hidden="true">{formOpen ? 'close' : 'add'}</span>
-          {formOpen ? 'Batal' : 'Bikin kantong baru'}
+        <button type="button" className="mt-4 min-h-11 w-full rounded-xl bg-[var(--accent)]/20 text-sm font-bold text-[var(--accent-weak)] flex items-center justify-center gap-2" onClick={() => (form ? setForm(null) : bukaForm(null))} aria-expanded={Boolean(form)}>
+          <span className="material-symbols-outlined text-base" aria-hidden="true">{form ? 'close' : 'add'}</span>
+          {form ? 'Batal' : 'Bikin kantong baru'}
         </button>
-        {formOpen && (
-          <form className="mt-3 flex flex-col gap-3" onSubmit={buat}>
+        {form && (
+          <form className="mt-3 flex flex-col gap-3" onSubmit={submit}>
             <div>
               <label className="mb-1 block text-xs font-semibold text-[var(--text-secondary)]" htmlFor="pocket-name">Nama kantong</label>
-              <input id="pocket-name" className={inputClass} maxLength={60} placeholder="Contoh: Kosan" value={nama} onChange={(event) => setNama(event.target.value)} autoFocus />
+              <input id="pocket-name" className={inputClass} maxLength={60} placeholder="Contoh: Kosan" value={form.nama} onChange={(event) => setForm({ ...form, nama: event.target.value })} autoFocus />
             </div>
             <fieldset>
               <legend className="mb-1 text-xs font-semibold text-[var(--text-secondary)]">Icon</legend>
-              <div className="flex flex-wrap gap-2">{ICONS.map((value) => <button type="button" key={value} aria-pressed={icon === value} aria-label={`Icon ${value}`} onClick={() => setIcon(value)} className={`h-11 w-11 rounded-xl border text-lg ${icon === value ? 'border-[var(--accent)]/50 bg-[var(--accent)]/15' : 'border-[var(--border-1)] bg-[var(--bg-surface-1)]'}`}>{value}</button>)}</div>
+              <div className="flex flex-wrap gap-2">{ICONS.map((value) => <button type="button" key={value} aria-pressed={form.icon === value} aria-label={`Icon ${value}`} onClick={() => setForm({ ...form, icon: value })} className={`h-11 w-11 rounded-xl border text-lg ${form.icon === value ? 'border-[var(--accent)]/50 bg-[var(--accent)]/15' : 'border-[var(--border-1)] bg-[var(--bg-surface-1)]'}`}>{value}</button>)}</div>
             </fieldset>
-            <button type="submit" disabled={busy || !nama.trim()} className="min-h-11 rounded-[var(--radius-input)] bg-[var(--accent)] px-4 text-sm font-bold text-white disabled:opacity-40">{busy ? 'Menyimpan…' : 'Simpan kantong'}</button>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[var(--text-secondary)]" htmlFor="pocket-nominal">Target per bulan</label>
+                <input id="pocket-nominal" className={inputClass} inputMode="numeric" placeholder="Rp 0" value={formatThousands(form.nominal)} onChange={(event) => setForm({ ...form, nominal: event.target.value })} aria-describedby="pocket-target-hint" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[var(--text-secondary)]" htmlFor="pocket-due">Jatuh tempo</label>
+                <input id="pocket-due" className={inputClass} type="number" min="1" max="28" inputMode="numeric" placeholder="tgl 1-28" value={form.jatuhTempo} onChange={(event) => setForm({ ...form, jatuhTempo: event.target.value })} aria-describedby="pocket-target-hint" />
+              </div>
+            </div>
+            <p id="pocket-target-hint" className="text-[11px] leading-4 text-[var(--text-tertiary)]">Opsional. Target dipakai buat ngitung “kurang berapa lagi” tiap bulan, jatuh tempo (tanggal 1-28) buat reminder di Dashboard.</p>
+            <button type="submit" disabled={busy || !form.nama.trim()} className="min-h-11 rounded-[var(--radius-input)] bg-[var(--accent)] px-4 text-sm font-bold text-white disabled:opacity-40">{busy ? 'Menyimpan…' : form.id ? 'Simpan perubahan' : 'Simpan kantong'}</button>
           </form>
         )}
       </section>
@@ -85,8 +113,9 @@ export default function Kantong() {
           <h2 id="pocket-list-title" className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">Kantong aktif</h2>
           <ul className="flex flex-col gap-3">
             {aktif.map((pocket) => {
+              const bill = bills.find((b) => b.id === pocket.id);
               const saldo = wallet.pockets[pocket.id] || 0;
-              const nominal = Number(pocket.nominal) || 0;
+              const nominal = bill ? bill.nominal : 0;
               const pct = nominal > 0 ? Math.min(100, Math.round((saldo / nominal) * 100)) : 0;
               return (
                 <li key={pocket.id} className="glass-card rounded-[var(--radius-card)] p-4">
@@ -102,10 +131,19 @@ export default function Kantong() {
                       <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${pct}%` }} />
                     </div>
                   )}
+                  {bill && (
+                    <p className={`mt-2 text-xs font-semibold ${bill.shortfall > 0 ? 'text-[var(--warning-weak)]' : 'text-[var(--success)]'}`}>
+                      {bill.shortfall > 0 ? `Kurang ${formatRp(bill.shortfall)}` : 'Target bulan ini ketutup'}
+                      {bill.jatuhTempo ? ` · jatuh tempo tgl ${bill.jatuhTempo}${bill.days === 0 ? ' (hari ini)' : ` (${bill.days} hari lagi)`}` : ''}
+                    </p>
+                  )}
                   <div className="mt-3 flex gap-2">
                     <button type="button" className="min-h-11 flex-1 rounded-xl bg-[var(--accent)]/20 text-sm font-bold text-[var(--accent-weak)]" onClick={() => alokasi(pocket)}>Alokasi</button>
                     <button type="button" className="min-h-11 flex-1 rounded-xl border border-[var(--border-1)] text-sm font-bold" onClick={() => bayar(pocket)}>Bayar</button>
-                    <button type="button" className="min-h-11 rounded-xl border border-[var(--border-1)] px-3 text-xs font-semibold text-[var(--text-secondary)]" disabled={busy} onClick={() => simpan({ ...pocket, aktif: false })}>Arsipkan</button>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button type="button" className="min-h-11 flex-1 rounded-xl border border-[var(--border-1)] text-xs font-semibold text-[var(--text-secondary)]" onClick={() => bukaForm(pocket)} aria-label={`Atur target kantong ${pocket.nama}`}>Atur target</button>
+                    <button type="button" className="min-h-11 flex-1 rounded-xl border border-[var(--border-1)] text-xs font-semibold text-[var(--text-secondary)]" disabled={busy} onClick={() => simpan({ ...pocket, aktif: false })}>Arsipkan</button>
                   </div>
                 </li>
               );

@@ -15,6 +15,40 @@ export const getDueSoonDebts = (debts, now = new Date()) => debts.map((debt) => 
   return remaining > 0 && days <= 7 ? { ...debt, days, remaining, duePeriode: nd.periode, dueTanggal: nd.tanggal } : null;
 }).filter(Boolean).sort((a, b) => a.days - b.days);
 
+// Tanggal jatuh tempo bulanan (1-28) → berapa hari lagi. Kalau tanggalnya sudah lewat bulan ini, hitung ke bulan depan.
+const daysUntilDay = (day, now) => {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(now.getFullYear(), now.getMonth(), day);
+  if (target < today) target.setMonth(target.getMonth() + 1);
+  return Math.round((target - today) / 86400000);
+};
+
+// Tagihan tetap per kantong: target bulanan (`nominal`) vs saldo kantong sekarang.
+// `shortfall` = kurang berapa lagi biar target bulan ini ketutup. Saldo ngumpul (rollover), jadi
+// begitu tagihan dibayar saldonya turun lagi dan target bulan berikutnya muncul sendiri.
+export const pocketBills = (pockets, wallet, now = new Date()) => pockets
+  .filter((pocket) => pocket.aktif !== false && Number(pocket.nominal) > 0)
+  .map((pocket) => {
+    const nominal = Number(pocket.nominal);
+    const saldo = (wallet && wallet.pockets && wallet.pockets[pocket.id]) || 0;
+    const day = Number(pocket.jatuhTempo) || 0;
+    return {
+      id: pocket.id,
+      nama: pocket.nama,
+      icon: pocket.icon,
+      nominal,
+      saldo,
+      shortfall: Math.max(0, nominal - saldo),
+      jatuhTempo: day || null,
+      days: day ? daysUntilDay(day, now) : null,
+    };
+  });
+
+// Reminder Dashboard: kantong yang jatuh tempo ≤ 7 hari lagi tapi saldonya masih kurang.
+export const getDueSoonPockets = (pockets, wallet, now = new Date(), windowDays = 7) => pocketBills(pockets, wallet, now)
+  .filter((bill) => bill.days !== null && bill.days <= windowDays && bill.shortfall > 0)
+  .sort((a, b) => a.days - b.days);
+
 export const getDashboardData = (transactions, debts, now = new Date(), pockets = []) => {
   const month = toLocalMonthKey(now);
   const monthTransactions = transactions.filter((tx) => dateValue(tx).startsWith(month));

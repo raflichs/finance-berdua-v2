@@ -97,7 +97,7 @@ export default function Kantong() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold text-[var(--text-secondary)]" htmlFor="pocket-due">Jatuh tempo</label>
-                <input id="pocket-due" className={inputClass} type="number" min="1" max="28" inputMode="numeric" placeholder="tgl 1-28" value={form.jatuhTempo} onChange={(event) => setForm({ ...form, jatuhTempo: event.target.value })} aria-describedby="pocket-target-hint" />
+                <input id="pocket-due" className={inputClass} inputMode="numeric" maxLength={2} placeholder="tgl 1-28" value={form.jatuhTempo} onChange={(event) => setForm({ ...form, jatuhTempo: event.target.value.replace(/\D/g, '') })} aria-describedby="pocket-target-hint" />
               </div>
             </div>
             <p id="pocket-target-hint" className="text-[11px] leading-4 text-[var(--text-tertiary)]">Opsional. Target dipakai buat ngitung “kurang berapa lagi” tiap bulan, jatuh tempo (tanggal 1-28) buat reminder di Dashboard.</p>

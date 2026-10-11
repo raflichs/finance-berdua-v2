@@ -30,6 +30,20 @@ npm run build
 npm run lint
 ```
 
+## Testing
+
+```bash
+npm test          # unit test — nggak butuh emulator, nggak butuh Java
+```
+
+Rules Realtime Database dites lawan emulator lokal, jadi butuh Java 21+ di `PATH`:
+
+```bash
+npm run test:rules
+```
+
+Test emulator ada di `tests/emulator/` dan sengaja nggak keikut `npm test` — glob-nya `tests/*.test.js` (nggak rekursif). Emulator RTDB ngunduh jar-nya sekali di jalan pertama.
+
 ## Firebase Rules
 
 Deploy the Realtime Database rules in `firebase.rules.json` with the Firebase CLI:
@@ -40,7 +54,7 @@ npx firebase deploy --only database
 
 ## Backup
 
-Use the app's backup export to download a JSON backup. Import a previously exported JSON file from the app. Backups support transactions, debts, and wedding settings and are limited to 10 MB. Keep exported files private.
+Use the app's backup export to download a JSON backup. Import a previously exported JSON file from the app. Backups support transactions, debts, wedding settings, and pockets, and are limited to 10 MB. Backups without a `pockets` field (versi lama) tetap kebaca dan dianggap tanpa kantong. Keep exported files private.
 
 ## Offline behavior
 

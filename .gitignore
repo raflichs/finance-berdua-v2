@@ -10,7 +10,6 @@ database-debug.log
 .oxlintrc.json
 opencode-ui-review.md
 scripts/
-tests/
 
 # OS
 .DS_Store
